@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+	<TargetFramework>net10.0</TargetFramework>
+	<Nullable>enable</Nullable>
+	<ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+	<PackageReference Include="RabbitMQ.Client" Version="7.2.2" />
+	<PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+	<ProjectReference Include="..\..\Tero.Postino.Application\Tero.Postino.Application.csproj" />
+	<ProjectReference Include="..\..\Tero.Postino.Domain\Tero.Postino.Domain.csproj" />
+	<ProjectReference Include="..\..\..\Tero.Messaging.MailContracts\Tero.Messaging.MailContracts.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,28 @@
+version: '3.8'
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - '5672:5672'
+      - '15672:15672'
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+
+  postino:
+    build:
+      context: .
+      dockerfile: src/Tero.Postino.Api/Dockerfile
+    depends_on:
+      - rabbitmq
+    environment:
+      - Rabbit__Host=rabbitmq
+      - Rabbit__User=guest
+      - Rabbit__Password=guest
+    ports:
+      - '8081:80'
+
+volumes:
+  rabbitmq-data:
