@@ -44,8 +44,8 @@
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
 
     <!-- aspire-servicedefaults template -->
-    <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.6.0" />
-    <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.6.0" />
+    <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.5.2" />
+    <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.5.2" />
     <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3" />
     <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.15.3" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.2" />
@@ -57,10 +57,10 @@
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
 
     <!-- Tero.Shared (GitHub Packages) -->
-    <PackageVersion Include="Tero.Contracts" Version="0.6.0" />
-    <PackageVersion Include="Tero.Messaging" Version="0.6.0" />
-    <PackageVersion Include="Tero.Persistence" Version="0.6.0" />
-    <PackageVersion Include="Tero.ServiceDefaults" Version="0.6.0" />
+    <PackageVersion Include="Tero.Contracts" Version="0.5.2" />
+    <PackageVersion Include="Tero.Messaging" Version="0.5.2" />
+    <PackageVersion Include="Tero.Persistence" Version="0.5.2" />
+    <PackageVersion Include="Tero.ServiceDefaults" Version="0.5.2" />
 
     <!-- HttpContext abstractions para Application layer -->
     <PackageVersion Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.2.0" />
