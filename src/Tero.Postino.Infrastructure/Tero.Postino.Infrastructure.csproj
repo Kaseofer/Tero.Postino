@@ -5,15 +5,15 @@
 	<ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
-  <ItemGroup>
-	<PackageReference Include="RabbitMQ.Client" Version="7.2.2" />
-	<PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
-  </ItemGroup>
+	<ItemGroup>
+	<PackageReference Include="RabbitMQ.Client" />
+	<PackageReference Include="Microsoft.Extensions.Hosting" />
+	</ItemGroup>
 
-  <ItemGroup>
-	<ProjectReference Include="..\..\Tero.Postino.Application\Tero.Postino.Application.csproj" />
-	<ProjectReference Include="..\..\Tero.Postino.Domain\Tero.Postino.Domain.csproj" />
-	<ProjectReference Include="..\..\..\Tero.Messaging.MailContracts\Tero.Messaging.MailContracts.csproj" />
-  </ItemGroup>
+	<ItemGroup>
+	<ProjectReference Include="..\Tero.Postino.Application\Tero.Postino.Application.csproj" />
+	<ProjectReference Include="..\Tero.Postino.Domain\Tero.Postino.Domain.csproj" />
+	<ProjectReference Include="..\..\..\..\shared\Tero.Contracts\Tero.Contracts.csproj" />
+	</ItemGroup>
 
 </Project>

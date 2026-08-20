@@ -5,7 +5,16 @@
 	<ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
-  <ItemGroup>
-	<ProjectReference Include="..\..\Tero.Postino.Domain\Tero.Postino.Domain.csproj" />
-  </ItemGroup>
+	<ItemGroup>
+	<ProjectReference Include="..\Tero.Postino.Domain\Tero.Postino.Domain.csproj" />
+	<ProjectReference Include="..\..\..\..\shared\Tero.Contracts\Tero.Contracts.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Folder Include="Ports\" />
+	</ItemGroup>
 </Project>

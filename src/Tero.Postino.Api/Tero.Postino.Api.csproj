@@ -1,14 +1,23 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
-  <PropertyGroup>
-	<TargetFramework>net10.0</TargetFramework>
-	<Nullable>enable</Nullable>
-	<ImplicitUsings>enable</ImplicitUsings>
-  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="RabbitMQ.Client" />
+  </ItemGroup>
 
   <ItemGroup>
-	<ProjectReference Include="..\Tero.Postino.Application\Tero.Postino.Application.csproj" />
-	<ProjectReference Include="..\Tero.Postino.Infrastructure\Tero.Postino.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\shared\Tero.Contracts\Tero.Contracts.csproj" />
+    <ProjectReference Include="..\..\shared\Tero.Messaging\Tero.Messaging.csproj" />
+    <ProjectReference Include="..\..\shared\Tero.Persistence\Tero.Persistence.csproj" />
+    <ProjectReference Include="..\..\shared\Tero.ServiceDefaults\Tero.ServiceDefaults.csproj" />
+
+    <ProjectReference Include="src\Tero.Postino.Application\Tero.Postino.Application.csproj" />
+    <ProjectReference Include="src\Tero.Postino.Domain\Tero.Postino.Domain.csproj" />
+    <ProjectReference Include="src\Tero.Postino.Infrastructure\Tero.Postino.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Infrastructure\Authorization\" />
   </ItemGroup>
 
 </Project>
