@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Http;
 using Tero.Contracts.Claims;
 using Tero.ServiceDefaults.Authentication;
 
-namespace Tero.Postino.Infrastructure.Authentication;
+namespace Tero.Postino.Api.Authentication;
 
 /// <summary>
 /// Extracts service identity from JWT Bearer token claims.
@@ -13,7 +13,7 @@ public sealed class ServiceIdentityValidator : IServiceIdentityValidator
     public Task<ServiceIdentity?> ValidateAsync(HttpContext context)
     {
         var user = context.User;
-        if (user == null || !user.Identity?.IsAuthenticated ?? false)
+        if (user == null || !(user.Identity?.IsAuthenticated ?? false))
             return Task.FromResult<ServiceIdentity?>(null);
 
         var serviceIdClaim = user.FindFirst(TeroClaimNames.ClientId)?.Value;
