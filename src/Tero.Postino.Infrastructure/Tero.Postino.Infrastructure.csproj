@@ -1,19 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-	<TargetFramework>net10.0</TargetFramework>
-	<Nullable>enable</Nullable>
-	<ImplicitUsings>enable</ImplicitUsings>
-  </PropertyGroup>
 
-	<ItemGroup>
-	<PackageReference Include="RabbitMQ.Client" />
-	<PackageReference Include="Microsoft.Extensions.Hosting" />
-	</ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="RabbitMQ.Client" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Tero.Contracts" />
+  </ItemGroup>
 
-	<ItemGroup>
-	<ProjectReference Include="..\Tero.Postino.Application\Tero.Postino.Application.csproj" />
-	<ProjectReference Include="..\Tero.Postino.Domain\Tero.Postino.Domain.csproj" />
-	<ProjectReference Include="..\..\..\..\shared\Tero.Contracts\Tero.Contracts.csproj" />
-	</ItemGroup>
+  <ItemGroup>
+    <!-- Domain llega transitivamente vía Application. -->
+    <ProjectReference Include="..\Tero.Postino.Application\Tero.Postino.Application.csproj" />
+  </ItemGroup>
 
 </Project>

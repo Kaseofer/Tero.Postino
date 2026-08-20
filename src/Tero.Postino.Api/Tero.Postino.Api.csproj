@@ -6,18 +6,16 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\shared\Tero.Contracts\Tero.Contracts.csproj" />
-    <ProjectReference Include="..\..\shared\Tero.Messaging\Tero.Messaging.csproj" />
-    <ProjectReference Include="..\..\shared\Tero.Persistence\Tero.Persistence.csproj" />
-    <ProjectReference Include="..\..\shared\Tero.ServiceDefaults\Tero.ServiceDefaults.csproj" />
-
-    <ProjectReference Include="src\Tero.Postino.Application\Tero.Postino.Application.csproj" />
-    <ProjectReference Include="src\Tero.Postino.Domain\Tero.Postino.Domain.csproj" />
-    <ProjectReference Include="src\Tero.Postino.Infrastructure\Tero.Postino.Infrastructure.csproj" />
+    <!-- La librería compartida llega por paquete, no por ruta: este repo tiene que compilar
+         solo, fuera del repo que orquesta el sistema. -->
+    <PackageReference Include="Tero.Contracts" />
+    <PackageReference Include="Tero.Messaging" />
+    <PackageReference Include="Tero.ServiceDefaults" />
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Infrastructure\Authorization\" />
+    <ProjectReference Include="..\Tero.Postino.Application\Tero.Postino.Application.csproj" />
+    <ProjectReference Include="..\Tero.Postino.Infrastructure\Tero.Postino.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
