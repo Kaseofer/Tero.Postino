@@ -10,12 +10,24 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: read
+      packages: read
+
     # Los paquetes Tero.* viven en GitHub Packages y el feed pide credenciales incluso para
-    # paquetes públicos. nuget.config las toma de estas dos variables; sin ellas el restore
-    # falla al buscar Tero.Contracts.
+    # paquetes públicos. nuget.config las toma de estas dos variables.
+    #
+    # Va un PACKAGES_TOKEN propio y NO el token automático de Actions: ese token sólo alcanza
+    # los paquetes del repositorio donde corre, y los Tero.* los publica Tero.Shared. Para él
+    # son ajenos y devuelve 403.
+    #
+    # El secreto se crea en Settings > Secrets and variables > Actions, con un PAT que tenga
+    # permiso read:packages. La alternativa —darle acceso a cada paquete desde su propia página,
+    # en Package settings > Manage Actions access— evita el secreto pero hay que repetirla por
+    # cada paquete y cada repo que lo consume.
     env:
       GITHUB_PACKAGES_USER: ${{ github.actor }}
-      GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
 
     steps:
       - uses: actions/checkout@v4
