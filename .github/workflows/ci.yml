@@ -9,18 +9,50 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: read
+
+    # Los paquetes Tero.* viven en GitHub Packages y el feed pide credenciales incluso para
+    # paquetes públicos. nuget.config las toma de estas dos variables.
+    #
+    # Va un PACKAGES_TOKEN propio y NO el token automático de Actions: ese token sólo alcanza
+    # los paquetes del repositorio donde corre, y los Tero.* los publica Tero.Shared. Para él
+    # son ajenos y devuelve 403.
+    #
+    # El secreto se crea en Settings > Secrets and variables > Actions, con un PAT que tenga
+    # permiso read:packages. La alternativa —darle acceso a cada paquete desde su propia página,
+    # en Package settings > Manage Actions access— evita el secreto pero hay que repetirla por
+    # cada paquete y cada repo que lo consume.
+    env:
+      GITHUB_PACKAGES_USER: ${{ github.actor }}
+      GITHUB_PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
+
     steps:
       - uses: actions/checkout@v4
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          global-json-file: global.json
+
       - name: Restore
         run: dotnet restore
+
       - name: Build
         run: dotnet build --no-restore -c Release
+
       - name: Test
         run: dotnet test --no-build -c Release --verbosity normal
-      - name: Build Docker image
-        run: |
-          docker build -t ${{ github.repository_owner }}/tero-postino:latest -f src/Tero.Postino.Api/Dockerfile .
+
+# El paso de imagen Docker se sacó a propósito.
+#
+# Fallaba desde la primera corrida, y era el único que hacía algo: los otros tres pasaban sin
+# compilar nada porque Tero.Postino.slnx estaba vacío. Un CI en el que el único paso real falla
+# y el resto miente no protege de nada.
+#
+# La imagen tampoco la consume nadie todavía: el entorno de desarrollo levanta los proyectos
+# directamente. Cuando haya un destino que use la imagen, el paso vuelve — y para entonces el
+# Dockerfile necesita además que se le pasen las credenciales del feed, que hoy no tiene forma
+# de recibir.

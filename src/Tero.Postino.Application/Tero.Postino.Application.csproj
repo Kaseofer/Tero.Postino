@@ -1,20 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-	<TargetFramework>net10.0</TargetFramework>
-	<Nullable>enable</Nullable>
-	<ImplicitUsings>enable</ImplicitUsings>
-  </PropertyGroup>
 
-	<ItemGroup>
-	<ProjectReference Include="..\Tero.Postino.Domain\Tero.Postino.Domain.csproj" />
-	<ProjectReference Include="..\..\..\..\shared\Tero.Contracts\Tero.Contracts.csproj" />
-	</ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Tero.Postino.Domain\Tero.Postino.Domain.csproj" />
+  </ItemGroup>
 
-	<ItemGroup>
-		<PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" />
-	</ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Tero.Contracts" />
 
-	<ItemGroup>
-	  <Folder Include="Ports\" />
-	</ItemGroup>
+    <!-- PENDIENTE: esta capa no debería depender de HTTP. Está acá porque
+         IServiceIdentityValidator recibe un HttpContext, que es una filtración de la capa web
+         hacia adentro. Al reemplazar la autenticación por tokens estáticos por los tokens de
+         servicio que emite Auth, la interfaz deja de necesitarlo y esta referencia se va. -->
+    <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" />
+  </ItemGroup>
+
 </Project>
