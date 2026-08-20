@@ -1,1 +1,6 @@
-<Solution />
+<Solution>
+  <Project Path="src/Tero.Postino.Domain/Tero.Postino.Domain.csproj" />
+  <Project Path="src/Tero.Postino.Application/Tero.Postino.Application.csproj" />
+  <Project Path="src/Tero.Postino.Infrastructure/Tero.Postino.Infrastructure.csproj" />
+  <Project Path="src/Tero.Postino.Api/Tero.Postino.Api.csproj" />
+</Solution>
