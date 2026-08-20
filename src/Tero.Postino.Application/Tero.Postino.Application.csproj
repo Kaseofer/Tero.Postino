@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <PackageReference Include="Tero.Contracts" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
 
     <!-- PENDIENTE: esta capa no debería depender de HTTP. Está acá porque
          IServiceIdentityValidator recibe un HttpContext, que es una filtración de la capa web

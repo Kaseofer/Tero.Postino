@@ -4,6 +4,9 @@
     <PackageReference Include="RabbitMQ.Client" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Tero.Contracts" />
+    <!-- POST-01: AuthServiceTokenClient, AppointmentsReminderClient y WhatsAppGatewayClient
+         necesitan IHttpClientFactory. -->
+    <PackageReference Include="Microsoft.Extensions.Http" />
   </ItemGroup>
 
   <ItemGroup>

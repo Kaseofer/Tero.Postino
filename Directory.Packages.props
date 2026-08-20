@@ -45,6 +45,14 @@
 
     <!-- aspire-servicedefaults template -->
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.5.2" />
+
+    <!-- IHttpClientFactory explícito (POST-01): Infrastructure no es un proyecto Web, no le
+         llega transitivo por el framework de ASP.NET Core como sí le llega a Api. -->
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.8" />
+
+    <!-- ILogger<T> explícito en Application (POST-01, SendAppointmentRemindersUseCase): esa
+         capa no es un proyecto Web tampoco. -->
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.5.2" />
     <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3" />
     <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.15.3" />
