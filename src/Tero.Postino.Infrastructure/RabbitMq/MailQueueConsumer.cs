@@ -8,13 +8,11 @@ using Tero.Postino.Infrastructure.Email;
 namespace Tero.Postino.Infrastructure.RabbitMq;
 
 /// <summary>
-/// El otro extremo de <c>MailPublisher</c> (este servicio) y
-/// <c>Tero.Auth.Api.QueueEmailSender</c> — ambos publican al exchange <c>postino.mail</c>,
-/// pero con DOS formas de JSON levemente distintas (el de Auth trae <c>templateName</c>/
-/// <c>cc</c>/<c>bcc</c>; el propio de Postino trae <c>templateType</c> en vez de
-/// <c>templateName</c>, sin esos otros campos). <see cref="MailQueueMessage"/> es el
-/// superset de las dos — los campos ausentes en cualquiera de los dos productores quedan
-/// simplemente en su default, JSON no exige que coincidan exacto.
+/// El otro extremo de <c>MailPublisher</c> — único productor de <c>postino.mail</c> desde que
+/// Auth migró de publicar HTML crudo directo a la cola a llamar <c>POST api/mail/send</c>
+/// como todos los demás (ver docs/paquetes-shared.md del repo Tero). <see cref="MailQueueMessage"/>
+/// ya no necesita tolerar el shape viejo de Auth (<c>templateName</c>/<c>cc</c>/<c>bcc</c>) —
+/// espeja 1:1 al <c>MailMessageDto</c> que arma <c>SendMailUseCase</c>.
 ///
 /// <c>prefetchCount: 1</c> + ack manual, mismo criterio que
 /// <c>Tero.WhatsApp.Gateway.InboundWebhookConsumer</c>. A diferencia de aquél, acá NO hay
@@ -93,7 +91,7 @@ public sealed class MailQueueConsumer : BackgroundService
         {
             var htmlBody = !string.IsNullOrEmpty(message.HtmlBody)
                 ? message.HtmlBody
-                : _templateRenderer.Render(message.TemplateName ?? message.TemplateType, message.Language, message.TemplateModel);
+                : _templateRenderer.Render(message.TemplateType, message.Language, message.TemplateModel);
 
             await _mailSender.SendAsync(message.To, message.Subject ?? "(sin asunto)", htmlBody, stoppingToken).ConfigureAwait(false);
             await channel.BasicAckAsync(args.DeliveryTag, false, stoppingToken).ConfigureAwait(false);
@@ -105,7 +103,8 @@ public sealed class MailQueueConsumer : BackgroundService
         }
     }
 
-    /// <summary>Superset de los dos productores — ver el comentario de clase.</summary>
+    /// <summary>Espeja 1:1 al <c>MailMessageDto</c> de <c>SendMailUseCase</c> — ver el
+    /// comentario de clase.</summary>
     private sealed class MailQueueMessage
     {
         public string? MessageId { get; set; }
@@ -113,7 +112,6 @@ public sealed class MailQueueConsumer : BackgroundService
         public string? Subject { get; set; }
         public string? HtmlBody { get; set; }
         public string? PlainTextBody { get; set; }
-        public string? TemplateName { get; set; }
         public string? TemplateType { get; set; }
         public string? Language { get; set; }
         public Dictionary<string, JsonElement>? TemplateModel { get; set; }

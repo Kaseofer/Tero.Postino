@@ -104,6 +104,15 @@ public sealed class SendMailUseCase : ISendMailUseCase
                     { "priority", n.Priority.ToString() },
                 }),
 
+            AdminCredentialsNotification n => (
+                $"Credenciales administrador para {n.TenantName}",
+                new Dictionary<string, object>
+                {
+                    { "tenantName", n.TenantName },
+                    { "userEmail", n.RecipientEmail },
+                    { "password", n.Password },
+                }),
+
             // C# no puede probar exhaustividad real sobre una jerarquía de clases (no es un
             // union type cerrado) — así que esto SÍ hace falta, a diferencia de un lenguaje
             // con sum types. Tirar acá, en vez de caer a un asunto genérico en silencio como
