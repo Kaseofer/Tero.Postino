@@ -8,6 +8,7 @@ using Tero.Postino.Application.Reminders.Ports;
 using Tero.Postino.Infrastructure.Authorization;
 using Tero.Postino.Infrastructure.Auth;
 using Tero.Postino.Infrastructure.Configuration;
+using Tero.Postino.Infrastructure.Email;
 using Tero.Postino.Infrastructure.RabbitMq;
 using Tero.Postino.Infrastructure.Reminders;
 
@@ -49,6 +50,12 @@ builder.Services.AddSingleton(sp =>
 
 // Infrastructure Services
 builder.Services.AddSingleton<IMailPublisher, MailPublisher>();
+
+// El otro extremo de la cola que llena MailPublisher (acá) y Tero.Auth.Api.QueueEmailSender:
+// hasta esta task nadie la consumía y los mails quedaban encolados para siempre.
+builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection(SmtpOptions.SectionName));
+builder.Services.AddSingleton<SmtpMailSender>();
+builder.Services.AddHostedService<MailQueueConsumer>();
 
 // Application Use Cases
 builder.Services.AddScoped<ISendVerificationEmailUseCase, SendVerificationEmailUseCase>();
