@@ -54,20 +54,30 @@ Cuatro capas, con la dirección de dependencias enforceada por el compilador: `D
 a nadie, `Application` tiene los casos de uso y los puertos, `Infrastructure` las
 implementaciones, y `Api` compone.
 
+## El worker (`MailQueueConsumer`)
+
+Existe desde POST-01: un `BackgroundService` en `Tero.Postino.Infrastructure/RabbitMq/` consume
+`postino.mail.queue`, resuelve el HTML (directo si el mensaje trae `HtmlBody`, o renderizado
+si trae `TemplateType` + `TemplateModel`) y manda por SMTP con `SmtpMailSender`
+(`System.Net.Mail.SmtpClient`, sin dependencia externa — mismo mecanismo que
+`Tero.Auth.Api.SmtpEmailSender`).
+
+**Plantillas como archivos `.html`**, tal como decía este README antes de que existiera nada de
+esto: viven en `Tero.Postino.Infrastructure/Templates/`, se abren con doble clic. El motor de
+reemplazo es deliberadamente simple (`MailTemplateRenderer`): `{{clave}}` se sustituye por texto
+plano, y `::optional:clave::...::/optional::` hace desaparecer un tramo entero si esa clave no
+vino en el modelo. No hay condicionales anidados ni loops — el día que un mail los necesite,
+ahí sí se justifica sumar un motor de verdad (Handlebars, Scriban).
+
+Ver [`docs/SMTP.md`](docs/SMTP.md) para configurar las credenciales.
+
 ## Qué falta
 
-Lo escribo explícito porque es la mitad de abajo del diagrama:
-
-- **El worker no existe.** No hay nada que consuma la cola.
-- **No hay envío real.** Ninguna integración con un servidor de correo: hoy un pedido se acepta,
-  se encola, y ahí queda.
-- **No hay reintentos ni dead-letter**, que es justamente lo que justifica que haya una cola.
-- **No hay plantillas.** El diseño dice que Postino arma el mail; todavía no hay con qué.
-
-  La dirección prevista: las plantillas viven **como archivos `.html` en este repositorio**, en
-  una carpeta propia, para poder abrirlas con doble clic y ver cómo quedan sin levantar nada.
-  El pedido elige cuál usar y aporta los datos; Postino la rinde. Editar el diseño de un mail
-  pasa a ser editar un archivo y verlo en el navegador.
+- **No hay reintentos ni dead-letter.** Un mensaje que falla al mandar se descarta
+  (`nack` sin reintentar) en vez de girar para siempre o caer a una cola separada para
+  revisar a mano — es la primera limitación real a resolver si el volumen crece.
+- **Plantillas: sólo `AppointmentNotification`.** Un `TemplateType` que no tenga archivo cae a
+  un HTML genérico armado en C# (lista de pares clave/valor) en vez de fallar.
 
 ## Autenticación entre servicios
 

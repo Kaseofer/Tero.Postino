@@ -32,12 +32,18 @@ public sealed class MailQueueConsumer : BackgroundService
 
     private readonly ConnectionFactory _connectionFactory;
     private readonly SmtpMailSender _mailSender;
+    private readonly MailTemplateRenderer _templateRenderer;
     private readonly ILogger<MailQueueConsumer> _logger;
 
-    public MailQueueConsumer(ConnectionFactory connectionFactory, SmtpMailSender mailSender, ILogger<MailQueueConsumer> logger)
+    public MailQueueConsumer(
+        ConnectionFactory connectionFactory,
+        SmtpMailSender mailSender,
+        MailTemplateRenderer templateRenderer,
+        ILogger<MailQueueConsumer> logger)
     {
         _connectionFactory = connectionFactory;
         _mailSender = mailSender;
+        _templateRenderer = templateRenderer;
         _logger = logger;
     }
 
@@ -87,7 +93,7 @@ public sealed class MailQueueConsumer : BackgroundService
         {
             var htmlBody = !string.IsNullOrEmpty(message.HtmlBody)
                 ? message.HtmlBody
-                : MailTemplateRenderer.Render(message.TemplateName ?? message.TemplateType, message.TemplateModel);
+                : _templateRenderer.Render(message.TemplateName ?? message.TemplateType, message.TemplateModel);
 
             await _mailSender.SendAsync(message.To, message.Subject ?? "(sin asunto)", htmlBody, stoppingToken).ConfigureAwait(false);
             await channel.BasicAckAsync(args.DeliveryTag, false, stoppingToken).ConfigureAwait(false);

@@ -55,6 +55,7 @@ builder.Services.AddSingleton<IMailPublisher, MailPublisher>();
 // hasta esta task nadie la consumía y los mails quedaban encolados para siempre.
 builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection(SmtpOptions.SectionName));
 builder.Services.AddSingleton<SmtpMailSender>();
+builder.Services.AddSingleton<MailTemplateRenderer>();
 builder.Services.AddHostedService<MailQueueConsumer>();
 
 // Application Use Cases
