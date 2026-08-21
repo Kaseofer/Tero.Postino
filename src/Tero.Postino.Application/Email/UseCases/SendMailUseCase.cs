@@ -102,7 +102,8 @@ public sealed class SendMailUseCase : ISendMailUseCase
             {
                 { "tenantName", n.TenantName },
                 { "userEmail", n.RecipientEmail },
-                { "password", n.Password },
+                { "setPasswordUrl", BuildActionUrl(n.ActionUrl, n.Token) },
+                { "expirationMinutes", n.ExpirationMinutes },
             },
 
             // C# no puede probar exhaustividad real sobre una jerarquía de clases (no es un
@@ -167,7 +168,8 @@ public sealed class SendMailUseCase : ISendMailUseCase
             errors.Add("La fecha de la cita no puede ser en el pasado");
         }
 
-        if (notification is PasswordResetNotification { ExpirationMinutes: <= 0 })
+        if (notification is PasswordResetNotification { ExpirationMinutes: <= 0 }
+            or AdminCredentialsNotification { ExpirationMinutes: <= 0 })
         {
             errors.Add("El tiempo de expiración debe ser mayor a 0");
         }

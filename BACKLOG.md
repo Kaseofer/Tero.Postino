@@ -1,8 +1,8 @@
 # Backlog — Tero.Postino
 
-**Resueltos: #1, #2, #3, #5, #6, #9 (21/08), #7, #8 (21/08).** Ver detalle al pie de cada
-ítem. Quedan abiertos: #4 (necesita coordinación con Auth); #10 (tests — el usuario los
-agrega él mismo, no se escriben acá) y #11 (Baja, sólo si se justifica).
+**Resueltos: #1, #2, #3, #5, #6, #9, #7, #8, #4 (21/08).** Ver detalle al pie de cada ítem.
+Quedan abiertos: #10 (tests — el usuario los agrega él mismo, no se escriben acá) y #11
+(Baja, sólo si se justifica).
 
 Levantado del análisis del sistema de plantillas de notificaciones (post-migración a
 `Templates/{idioma}/{Tipo}.html`, commits `00404ec` y `7fd9279`). Ordenado por prioridad:
@@ -128,7 +128,7 @@ si cualquier emisor o dato de tenant se contamina.
 
 ---
 
-### 4. `AdminCredentials` manda contraseña en texto plano por email
+### 4. `AdminCredentials` manda contraseña en texto plano por email — ✅ RESUELTO
 
 **Problema detectado**
 
@@ -331,7 +331,7 @@ para estilos comunes entre las 21 plantillas.
 | 1 | Asuntos no localizados | Alta | M | ✅ Resuelto |
 | 2 | Fallback de idioma | Alta | S | ✅ Resuelto |
 | 3 | HtmlEncode en sustituciones | Alta | S | ✅ Resuelto |
-| 4 | Contraseña plana en AdminCredentials | Media | M-L | Pendiente (coordinación con Auth) |
+| 4 | Contraseña plana en AdminCredentials | Media | M-L | ✅ Resuelto |
 | 5 | Armado de URLs con token | Media | S | ✅ Resuelto |
 | 6 | Validar `LanguageCode` | Media | S | ✅ Resuelto |
 | 7 | Dead-letter queue | Media | L | ✅ Resuelto |
