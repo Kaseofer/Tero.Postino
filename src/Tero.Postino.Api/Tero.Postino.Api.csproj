@@ -3,6 +3,9 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="RabbitMQ.Client" />
+    <!-- Reemplaza el filtro de auth estático (X-Tero-Service-Id/Token) por JWT de servicio,
+         mismo mecanismo que Auth/Appointments/Gateway. -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
   </ItemGroup>
 
   <ItemGroup>

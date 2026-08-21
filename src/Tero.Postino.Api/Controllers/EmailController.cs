@@ -1,19 +1,23 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Tero.Contracts.Mail.Requests;
 using Tero.Contracts.Mail.Responses;
 using Tero.Postino.Application.Email.Ports;
-using Tero.Postino.Filters;
 
 namespace Tero.Postino.Controllers;
 
 /// <summary>
-/// Controlador para endpoints de envío de correos.
-/// Solo microservicios autorizados del ecosistema Tero pueden usar estos endpoints.
-/// Se requieren headers: X-Tero-Service-Id y X-Tero-Service-Token
+/// Controlador para endpoints de envío de correos. Sólo microservicios autorizados —
+/// <see cref="Authorize"/> exige un JWT válido, y cada acción además comprueba a mano el
+/// claim <c>client_id</c> (sólo presente en tokens de servicio, ver
+/// <c>Tero.Auth.Api.JwtTokenIssuer.IssueForService</c>): un token de usuario final nunca
+/// debe poder disparar un envío — mismo criterio que <c>WhatsAppSendController</c> en el
+/// Gateway. Reemplaza el header estático <c>X-Tero-Service-Id</c>/<c>X-Tero-Service-Token</c>
+/// que usaba antes (ver README, quedaba marcado como pendiente de unificar).
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[TeroServiceAuthentication]
+[Authorize]
 public sealed class EmailController : ControllerBase
 {
     private readonly ISendVerificationEmailUseCase _sendVerificationEmailUseCase;
@@ -29,6 +33,11 @@ public sealed class EmailController : ControllerBase
         _sendPasswordResetUseCase = sendPasswordResetUseCase ?? throw new ArgumentNullException(nameof(sendPasswordResetUseCase));
         _sendAppointmentNotificationUseCase = sendAppointmentNotificationUseCase ?? throw new ArgumentNullException(nameof(sendAppointmentNotificationUseCase));
     }
+
+    /// <summary>Ver el comentario de clase — claim leído crudo, no vía <c>TeroClaimNames</c>:
+    /// este repo no referencia ese paquete todavía, y usarlo por un solo claim no lo
+    /// justifica hoy.</summary>
+    private bool IsServiceToken() => !string.IsNullOrEmpty(User.FindFirst("client_id")?.Value);
 
     /// <summary>
     /// Envía un correo de verificación de email
@@ -47,6 +56,9 @@ public sealed class EmailController : ControllerBase
         [FromBody] VerifyEmailRequest request,
         CancellationToken cancellationToken)
     {
+        if (!IsServiceToken())
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Este endpoint sólo admite tokens de servicio." });
+
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
 
@@ -82,6 +94,9 @@ public sealed class EmailController : ControllerBase
         [FromBody] ResetPasswordRequest request,
         CancellationToken cancellationToken)
     {
+        if (!IsServiceToken())
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Este endpoint sólo admite tokens de servicio." });
+
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
 
@@ -117,6 +132,9 @@ public sealed class EmailController : ControllerBase
         [FromBody] AppointmentNotificationRequest request,
         CancellationToken cancellationToken)
     {
+        if (!IsServiceToken())
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Este endpoint sólo admite tokens de servicio." });
+
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
 

@@ -1,11 +1,10 @@
 using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
-using Tero.Postino.Application.Authorization;
+using Tero.Postino.Api.Authentication;
 using Tero.Postino.Application.Email.Ports;
 using Tero.Postino.Application.Email.UseCases;
 using Tero.Postino.Application.Reminders;
 using Tero.Postino.Application.Reminders.Ports;
-using Tero.Postino.Infrastructure.Authorization;
 using Tero.Postino.Infrastructure.Auth;
 using Tero.Postino.Infrastructure.Configuration;
 using Tero.Postino.Infrastructure.Email;
@@ -20,19 +19,9 @@ builder.AddServiceDefaults();
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
-// Tero Service Authentication Configuration
-var authorizedServices = new Dictionary<string, string>
-{
-    // Formato: { "service-id", "service-token" }
-    // En producción, estos valores deben venir de un servicio seguro de configuración
-    // o variables de entorno
-    { "auth-api", builder.Configuration["Tero:Services:AuthApi:Token"] ?? "auth-api-token-replace-me" },
-    { "appointments-api", builder.Configuration["Tero:Services:AppointmentsApi:Token"] ?? "appointments-api-token-replace-me" },
-    { "whatsapp-gateway", builder.Configuration["Tero:Services:WhatsAppGateway:Token"] ?? "whatsapp-gateway-token-replace-me" }
-};
-
-builder.Services.AddSingleton<IServiceIdentityValidator>(sp =>
-    new TeroServiceIdentityValidator(authorizedServices, sp.GetRequiredService<ILogger<TeroServiceIdentityValidator>>()));
+// Reemplaza el mecanismo anterior (headers estáticos X-Tero-Service-Id/X-Tero-Service-Token,
+// ver README) por el mismo JWT de servicio que emite Auth y ya validan Appointments/Gateway.
+builder.Services.AddTeroJwtAuthentication(builder.Configuration);
 
 // RabbitMQ Configuration
 builder.Services.AddSingleton(sp =>
@@ -109,6 +98,12 @@ if (app.Environment.IsDevelopment())
 app.UseCorrelationId();
 
 app.UseHttpsRedirection();
+
+// Faltaba: sin este middleware, [Authorize] no tiene con qué resolver el principal — mismo
+// gap encontrado hoy en Tero.Auth.Api (UseRateLimiter) y Tero.WhatsApp.Gateway
+// (UseAuthentication, WA-01). Este servicio no había tenido ningún endpoint con [Authorize]
+// hasta ahora (usaba el filtro estático viejo).
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();

@@ -81,13 +81,19 @@ Ver [`docs/SMTP.md`](docs/SMTP.md) para configurar las credenciales.
 
 ## Autenticación entre servicios
 
-Hoy valida dos headers (`X-Tero-Service-Id` y `X-Tero-Service-Token`) contra una lista en
-configuración.
+JWT de servicio emitido por Auth (`POST api/auth/service-token`) — mismo mecanismo que
+Appointments y el Gateway. `EmailController` exige `[Authorize]` más el claim `client_id`
+(sólo presente en tokens de servicio, nunca en uno de usuario final).
 
-**Es distinto a lo que hace el resto del sistema**, que usa los tokens de servicio que emite
-Auth: JWT de vida corta que además llevan la organización. El token estático no la lleva, y las
-notificaciones de turno son de una organización concreta — hoy no hay forma de atribuirlas.
-Queda pendiente unificarlo.
+Reemplaza el mecanismo anterior (dos headers estáticos, `X-Tero-Service-Id` y
+`X-Tero-Service-Token`, contra una lista en configuración) que este README marcaba como
+pendiente de unificar: ese token no llevaba la organización, y las notificaciones de turno son
+de una organización concreta — no había forma de atribuirlas. El JWT sí la lleva
+(`tenant_id`).
+
+Para que un llamador (Auth, Appointments, el Gateway) pueda pedir un token para hablarle a
+Postino, hace falta un `ServiceClient` sembrado del lado de Auth con `ClientId = "postino"` —
+hoy sólo existe el de `whatsapp-gateway`.
 
 ## Correrlo
 
