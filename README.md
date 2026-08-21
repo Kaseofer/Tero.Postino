@@ -73,11 +73,12 @@ Ver [`docs/SMTP.md`](docs/SMTP.md) para configurar las credenciales.
 
 ## Qué falta
 
-- **No hay reintentos ni dead-letter.** Un mensaje que falla al mandar se descarta
-  (`nack` sin reintentar) en vez de girar para siempre o caer a una cola separada para
-  revisar a mano — es la primera limitación real a resolver si el volumen crece.
 - **Plantillas: sólo `AppointmentNotification`.** Un `TemplateType` que no tenga archivo cae a
   un HTML genérico armado en C# (lista de pares clave/valor) en vez de fallar.
+
+Reintentos con backoff + dead-letter (`postino.mail.dead`) y la parte `text/plain` de cada
+mail (multipart/alternative) ya están resueltos — ver `MailQueueConsumer`/`SmtpMailSender`
+y BACKLOG.md #7/#8.
 
 ## Autenticación entre servicios
 

@@ -24,7 +24,12 @@ public sealed class SmtpMailSender
         _logger = logger;
     }
 
-    public async Task SendAsync(string to, string subject, string htmlBody, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// <paramref name="plainTextBody"/> es opcional (BACKLOG.md #8) — cuando viene, se manda
+    /// como parte alternativa <c>text/plain</c> junto al HTML (multipart/alternative), en vez
+    /// de mandar sólo HTML como antes. Sin ella, el comportamiento es el de siempre.
+    /// </summary>
+    public async Task SendAsync(string to, string subject, string htmlBody, string? plainTextBody = null, CancellationToken cancellationToken = default)
     {
         var smtp = _options.Value;
 
@@ -40,9 +45,19 @@ public sealed class SmtpMailSender
         using var message = new MailMessage(new MailAddress(smtp.FromAddress, smtp.FromName ?? string.Empty), new MailAddress(to))
         {
             Subject = subject,
-            Body = htmlBody,
-            IsBodyHtml = true,
         };
+
+        if (!string.IsNullOrEmpty(plainTextBody))
+        {
+            message.Body = plainTextBody;
+            message.IsBodyHtml = false;
+            message.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(htmlBody, null, "text/html"));
+        }
+        else
+        {
+            message.Body = htmlBody;
+            message.IsBodyHtml = true;
+        }
 
         using var client = new SmtpClient(smtp.Host, smtp.Port)
         {

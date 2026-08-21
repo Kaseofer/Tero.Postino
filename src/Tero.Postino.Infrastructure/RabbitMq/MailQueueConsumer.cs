@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -15,16 +16,21 @@ namespace Tero.Postino.Infrastructure.RabbitMq;
 /// espeja 1:1 al <c>MailMessageDto</c> que arma <c>SendMailUseCase</c>.
 ///
 /// <c>prefetchCount: 1</c> + ack manual, mismo criterio que
-/// <c>Tero.WhatsApp.Gateway.InboundWebhookConsumer</c>. A diferencia de aquél, acá NO hay
-/// cola de dead-letter todavía: un mensaje que falla se <c>nack(requeue: false)</c> y se
-/// pierde, en vez de girar para siempre — aceptable para el volumen y el riesgo de este
-/// servicio hoy, pero es la primera limitación real a resolver si el volumen crece.
+/// <c>Tero.WhatsApp.Gateway.InboundWebhookConsumer</c>. Un error de render o SMTP ya no se
+/// pierde al primer intento (BACKLOG.md #7): se reintenta con backoff creciente vía
+/// republish (header <c>x-retry-count</c>) hasta <see cref="MaxRetries"/> veces, y recién ahí
+/// va a <c>postino.mail.dead</c> con el motivo y el payload original completo, para
+/// reprocesar a mano — ver el query de Seq documentado en OBSERVABILITY.md.
 /// </summary>
 public sealed class MailQueueConsumer : BackgroundService
 {
     private const string ExchangeName = "postino.mail";
     private const string QueueName = "postino.mail.queue";
     private const string RoutingKey = "mail.send";
+    private const string DeadQueueName = "postino.mail.dead";
+    private const string DeadRoutingKey = "mail.dead";
+    private const string RetryCountHeader = "x-retry-count";
+    private const int MaxRetries = 3;
 
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
 
@@ -55,6 +61,11 @@ public sealed class MailQueueConsumer : BackgroundService
         await channel.QueueDeclareAsync(QueueName, durable: true, exclusive: false, autoDelete: false, cancellationToken: stoppingToken)
             .ConfigureAwait(false);
         await channel.QueueBindAsync(QueueName, ExchangeName, RoutingKey, cancellationToken: stoppingToken).ConfigureAwait(false);
+
+        await channel.QueueDeclareAsync(DeadQueueName, durable: true, exclusive: false, autoDelete: false, cancellationToken: stoppingToken)
+            .ConfigureAwait(false);
+        await channel.QueueBindAsync(DeadQueueName, ExchangeName, DeadRoutingKey, cancellationToken: stoppingToken).ConfigureAwait(false);
+
         await channel.BasicQosAsync(0, prefetchCount: 1, global: false, stoppingToken).ConfigureAwait(false);
 
         var consumer = new AsyncEventingBasicConsumer(channel);
@@ -101,14 +112,97 @@ public sealed class MailQueueConsumer : BackgroundService
                 : _templateRenderer.RenderSubject(message.TemplateType, message.Language, message.TemplateModel)
                     ?? "(sin asunto)";
 
-            await _mailSender.SendAsync(message.To, subject, htmlBody, stoppingToken).ConfigureAwait(false);
+            // Respeta un PlainTextBody explícito; si no vino, se deriva del HTML ya armado
+            // (BACKLOG.md #8) — antes el campo existía en el contrato pero nadie lo llenaba.
+            var plainTextBody = !string.IsNullOrEmpty(message.PlainTextBody)
+                ? message.PlainTextBody
+                : MailTemplateRenderer.HtmlToPlainText(htmlBody);
+
+            await _mailSender.SendAsync(message.To, subject, htmlBody, plainTextBody, stoppingToken).ConfigureAwait(false);
             await channel.BasicAckAsync(args.DeliveryTag, false, stoppingToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Falló el envío del mensaje {MessageId} — se descarta (nack sin reintentar).", message.MessageId);
-            await channel.BasicNackAsync(args.DeliveryTag, false, requeue: false, stoppingToken).ConfigureAwait(false);
+            var retryCount = GetRetryCount(args.BasicProperties);
+
+            if (retryCount < MaxRetries)
+            {
+                var nextAttempt = retryCount + 1;
+                var backoff = TimeSpan.FromSeconds(Math.Pow(2, nextAttempt));
+
+                _logger.LogWarning(
+                    ex,
+                    "Falló el envío del mensaje {MessageId} (intento {Attempt}/{MaxRetries}) — reintenta en {Backoff}.",
+                    message.MessageId, nextAttempt, MaxRetries, backoff);
+
+                await Task.Delay(backoff, stoppingToken).ConfigureAwait(false);
+                await RepublishAsync(channel, ExchangeName, RoutingKey, args.Body, nextAttempt, headers: null, stoppingToken)
+                    .ConfigureAwait(false);
+            }
+            else
+            {
+                // Nivel Error + MessageTemplate fijo: queda buscable/alertable en Seq igual que
+                // el resto de "Errores en Envío de Email" (ver OBSERVABILITY.md) — el contador
+                // de dead-lettered es esa búsqueda, no una métrica nueva.
+                _logger.LogError(
+                    ex,
+                    "Mensaje {MessageId} agotó los {MaxRetries} reintentos — va a dead-letter ({DeadQueue}).",
+                    message.MessageId, MaxRetries, DeadQueueName);
+
+                var deadHeaders = new Dictionary<string, object?>
+                {
+                    ["x-dead-letter-reason"] = ex.Message,
+                    ["x-original-routing-key"] = RoutingKey,
+                };
+                await RepublishAsync(channel, ExchangeName, DeadRoutingKey, args.Body, retryCount, deadHeaders, stoppingToken)
+                    .ConfigureAwait(false);
+            }
+
+            await channel.BasicAckAsync(args.DeliveryTag, false, stoppingToken).ConfigureAwait(false);
         }
+    }
+
+    private static async Task RepublishAsync(
+        IChannel channel,
+        string exchange,
+        string routingKey,
+        ReadOnlyMemory<byte> body,
+        int retryCount,
+        Dictionary<string, object?>? headers,
+        CancellationToken cancellationToken)
+    {
+        var allHeaders = headers is null
+            ? new Dictionary<string, object?>()
+            : new Dictionary<string, object?>(headers);
+        allHeaders[RetryCountHeader] = retryCount;
+
+        var props = new BasicProperties
+        {
+            Persistent = true,
+            ContentType = "application/json",
+            Headers = allHeaders,
+        };
+
+        var bytes = body.ToArray();
+        await channel.BasicPublishAsync(exchange, routingKey, mandatory: false, basicProperties: props, body: bytes, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static int GetRetryCount(IReadOnlyBasicProperties properties)
+    {
+        if (properties.Headers is not null
+            && properties.Headers.TryGetValue(RetryCountHeader, out var raw))
+        {
+            return raw switch
+            {
+                int i => i,
+                long l => (int)l,
+                byte[] bytes => int.TryParse(Encoding.UTF8.GetString(bytes), out var parsed) ? parsed : 0,
+                _ => 0,
+            };
+        }
+
+        return 0;
     }
 
     /// <summary>Espeja 1:1 al <c>MailMessageDto</c> de <c>SendMailUseCase</c> — ver el

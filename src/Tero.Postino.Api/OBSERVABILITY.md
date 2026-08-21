@@ -185,6 +185,14 @@ Todo con mismo TraceId → Visible en Seq como trace único
    ```
    → Dispara alerta si count > 0
 
+2b. **Mails en dead-letter** (`postino.mail.dead`, ver `MailQueueConsumer` — BACKLOG.md #7:
+    hasta 3 reintentos con backoff antes de llegar acá, con el motivo y el payload original
+    completo para reprocesar a mano)
+   ```sql
+   Host = "postino" AND MessageTemplate LIKE "%agotó los % reintentos — va a dead-letter%"
+   ```
+   → Dispara alerta si count > 0; cada mensaje trae el `MessageId` para ubicarlo en la cola
+
 3. **Latencia Alta**
    ```sql
    Host = "postino" AND @Duration > 5000

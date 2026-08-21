@@ -1,7 +1,7 @@
 # Backlog — Tero.Postino
 
-**Resueltos (21/08): #1, #2, #3, #5, #6, #9.** Ver detalle al pie de cada ítem. Quedan
-abiertos: #4 (necesita coordinación con Auth), #7, #8 (Media); #10 (tests — el usuario los
+**Resueltos: #1, #2, #3, #5, #6, #9 (21/08), #7, #8 (21/08).** Ver detalle al pie de cada
+ítem. Quedan abiertos: #4 (necesita coordinación con Auth); #10 (tests — el usuario los
 agrega él mismo, no se escriben acá) y #11 (Baja, sólo si se justifica).
 
 Levantado del análisis del sistema de plantillas de notificaciones (post-migración a
@@ -214,7 +214,7 @@ servicio comprometido; ruido de paths impredecibles en logs.
 
 ---
 
-### 7. Mails que fallan se descartan sin dead-letter
+### 7. Mails que fallan se descartan sin dead-letter — ✅ RESUELTO
 
 **Problema detectado**
 
@@ -238,7 +238,7 @@ tiempo.
 
 ---
 
-### 8. `PlainTextBody` muerto: se envía siempre HTML-only
+### 8. `PlainTextBody` muerto: se envía siempre HTML-only — ✅ RESUELTO
 
 **Problema detectado**
 
@@ -334,8 +334,8 @@ para estilos comunes entre las 21 plantillas.
 | 4 | Contraseña plana en AdminCredentials | Media | M-L | Pendiente (coordinación con Auth) |
 | 5 | Armado de URLs con token | Media | S | ✅ Resuelto |
 | 6 | Validar `LanguageCode` | Media | S | ✅ Resuelto |
-| 7 | Dead-letter queue | Media | L | Pendiente |
-| 8 | Parte texto plano (multipart) | Media | M | Pendiente |
+| 7 | Dead-letter queue | Media | L | ✅ Resuelto |
+| 8 | Parte texto plano (multipart) | Media | M | ✅ Resuelto |
 | 9 | Datos fantasma (`priority`, `durationMinutes`) | Baja | S | ✅ Resuelto |
 | 10 | Tests del renderer | Baja | M | Pendiente (los agrega el usuario) |
 | 11 | Layout HTML compartido | Baja | M | Pendiente (sólo si se justifica) |

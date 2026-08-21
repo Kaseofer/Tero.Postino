@@ -53,6 +53,19 @@ public sealed class MailTemplateRenderer
     // documentación, mezclado con datos reales— viaja dentro del HTML de cada mail enviado.
     private static readonly Regex HtmlCommentPattern = new(@"<!--.*?-->", RegexOptions.Compiled | RegexOptions.Singleline);
 
+    // BACKLOG.md #8: derivar el texto plano del HTML ya renderizado en vez de mantener una
+    // plantilla .txt paralela por cada .html — sólo 3 pasos: los links se vuelven "texto (url)",
+    // las etiquetas de bloque se vuelven salto de línea, y el resto de las etiquetas desaparece.
+    private static readonly Regex AnchorPattern = new(
+        @"<a\s+[^>]*href\s*=\s*""(?<url>[^""]*)""[^>]*>(?<text>.*?)</a>",
+        RegexOptions.Compiled | RegexOptions.Singleline | RegexOptions.IgnoreCase);
+
+    private static readonly Regex BlockTagPattern = new(
+        @"</p>|</div>|<br\s*/?>",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private static readonly Regex AnyTagPattern = new(@"<[^>]+>", RegexOptions.Compiled);
+
     private readonly string _templatesDirectory;
     private readonly ILogger<MailTemplateRenderer> _logger;
 
@@ -104,6 +117,29 @@ public sealed class MailTemplateRenderer
         }
 
         return raw;
+    }
+
+    /// <summary>
+    /// Deriva la parte <c>text/plain</c> a partir del HTML ya renderizado — el remitente puede
+    /// mandar <c>PlainTextBody</c> explícito, pero cuando no lo hace (el caso de
+    /// <c>SendMailUseCase</c>, que sólo arma <c>TemplateModel</c>) esto evita mantener una
+    /// plantilla <c>.txt</c> paralela a cada <c>.html</c> (BACKLOG.md #8). Los links
+    /// <c>&lt;a href="url"&gt;texto&lt;/a&gt;</c> se vuelven <c>"texto (url)"</c> antes de
+    /// perder el resto de las etiquetas, así el destinatario sin HTML igual llega a la URL.
+    /// </summary>
+    public static string HtmlToPlainText(string html)
+    {
+        var withLinks = AnchorPattern.Replace(html, m => $"{AnyTagPattern.Replace(m.Groups["text"].Value, string.Empty)} ({m.Groups["url"].Value})");
+        var withBreaks = BlockTagPattern.Replace(withLinks, "\n");
+        var stripped = AnyTagPattern.Replace(withBreaks, string.Empty);
+        var decoded = WebUtility.HtmlDecode(stripped);
+
+        var lines = decoded
+            .Split('\n')
+            .Select(line => Regex.Replace(line, @"\s+", " ").Trim())
+            .Where(line => line.Length > 0);
+
+        return string.Join("\n\n", lines);
     }
 
     /// <summary>
