@@ -44,7 +44,14 @@ public sealed record MailMessageDto
     public Dictionary<string, object>? TemplateModel { get; init; }
 
     /// <summary>
-    /// Tipo de plantilla a usar
+    /// Tipo de plantilla a usar — <c>notification.NotificationType.ToString()</c>, ver
+    /// <c>SendMailUseCase</c>.
     /// </summary>
     public string? TemplateType { get; init; }
+
+    /// <summary>
+    /// Idioma de la organización (<c>es</c>/<c>pt</c>/<c>en</c>) — <c>MailTemplateRenderer</c>
+    /// lo usa para elegir la carpeta de plantillas.
+    /// </summary>
+    public string? Language { get; init; }
 }

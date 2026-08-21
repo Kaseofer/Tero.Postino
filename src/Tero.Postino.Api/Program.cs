@@ -48,9 +48,7 @@ builder.Services.AddSingleton<MailTemplateRenderer>();
 builder.Services.AddHostedService<MailQueueConsumer>();
 
 // Application Use Cases
-builder.Services.AddScoped<ISendVerificationEmailUseCase, SendVerificationEmailUseCase>();
-builder.Services.AddScoped<ISendPasswordResetUseCase, SendPasswordResetUseCase>();
-builder.Services.AddScoped<ISendAppointmentNotificationUseCase, SendAppointmentNotificationUseCase>();
+builder.Services.AddScoped<ISendMailUseCase, SendMailUseCase>();
 
 // POST-01: job de recordatorios. Options — sin AddValidatedOptions acá (a diferencia del
 // Gateway): un tenant mal configurado en Reminders:TenantIds falla recién en la corrida del
@@ -87,6 +85,11 @@ builder.Services.AddScoped<SendAppointmentRemindersUseCase>();
 builder.Services.AddHostedService<ReminderBackgroundService>();
 
 var app = builder.Build();
+
+// Falla explícito al arrancar si falta una plantilla para algún MailNotificationType en algún
+// idioma ya cargado — mejor que enterarse en el primer envío de ese tipo/idioma, con el mail
+// ya perdido salvo el fallback genérico (ver MailTemplateRenderer).
+app.Services.GetRequiredService<MailTemplateRenderer>().ValidateTemplatesExistOrThrow();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

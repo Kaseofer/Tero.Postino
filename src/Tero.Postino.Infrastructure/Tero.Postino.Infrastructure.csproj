@@ -17,7 +17,7 @@
   <ItemGroup>
     <!-- Plantillas de mail (MailTemplateRenderer) — viajan con el deploy, editables como
          HTML común sin levantar nada. -->
-    <Content Include="Templates\*.html">
+    <Content Include="Templates\**\*.html">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

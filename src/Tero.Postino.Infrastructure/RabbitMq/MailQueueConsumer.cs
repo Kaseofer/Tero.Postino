@@ -93,7 +93,7 @@ public sealed class MailQueueConsumer : BackgroundService
         {
             var htmlBody = !string.IsNullOrEmpty(message.HtmlBody)
                 ? message.HtmlBody
-                : _templateRenderer.Render(message.TemplateName ?? message.TemplateType, message.TemplateModel);
+                : _templateRenderer.Render(message.TemplateName ?? message.TemplateType, message.Language, message.TemplateModel);
 
             await _mailSender.SendAsync(message.To, message.Subject ?? "(sin asunto)", htmlBody, stoppingToken).ConfigureAwait(false);
             await channel.BasicAckAsync(args.DeliveryTag, false, stoppingToken).ConfigureAwait(false);
@@ -115,6 +115,7 @@ public sealed class MailQueueConsumer : BackgroundService
         public string? PlainTextBody { get; set; }
         public string? TemplateName { get; set; }
         public string? TemplateType { get; set; }
+        public string? Language { get; set; }
         public Dictionary<string, JsonElement>? TemplateModel { get; set; }
     }
 }

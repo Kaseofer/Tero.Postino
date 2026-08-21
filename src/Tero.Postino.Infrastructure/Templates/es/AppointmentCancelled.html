@@ -1,0 +1,18 @@
+<!--
+  Plantilla compartida por las 4 variedades de turno (booked/cancelled/rescheduled/reminder) —
+  el cuerpo es el mismo a propósito, lo único que distingue una de otra es el asunto (lo arma
+  SendMailUseCase, no este archivo). Si el día de mañana hace falta un cuerpo distinto por
+  variedad (por ejemplo "tu turno fue cancelado" en el texto), es edición de archivo, no de
+  código: cada MailNotificationType ya busca su propio HTML por convención.
+
+  Placeholders: {{contactName}} {{serviceName}} {{appointmentDateTime}} {{location}}.
+  MailTemplateRenderer los reemplaza por texto plano — no hay lógica condicional acá salvo
+  ::optional::, que hace desaparecer la fila entera si el dato no vino.
+
+  Editable con doble clic — es HTML común, se ve en cualquier navegador.
+-->
+<div style="font-family: sans-serif; max-width: 480px;">
+  <p>Hola {{contactName}},</p>
+  <p style="font-size: 16px;"><strong>{{serviceName}}</strong> — {{appointmentDateTime}}</p>
+  ::optional:location::<p><strong>Ubicación:</strong> {{location}}</p>::/optional::
+</div>

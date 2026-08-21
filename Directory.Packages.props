@@ -65,10 +65,10 @@
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
 
     <!-- Tero.Shared (GitHub Packages) -->
-    <PackageVersion Include="Tero.Contracts" Version="0.6.0" />
-    <PackageVersion Include="Tero.Messaging" Version="0.6.0" />
+    <PackageVersion Include="Tero.Contracts" Version="0.7.0" />
+    <PackageVersion Include="Tero.Messaging" Version="0.7.0" />
     <PackageVersion Include="Tero.Persistence" Version="0.6.0" />
-    <PackageVersion Include="Tero.ServiceDefaults" Version="0.6.0" />
+    <PackageVersion Include="Tero.ServiceDefaults" Version="0.7.0" />
 
     <!-- HttpContext abstractions para Application layer -->
     <PackageVersion Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.2.0" />

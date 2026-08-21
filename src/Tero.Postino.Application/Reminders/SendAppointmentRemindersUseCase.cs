@@ -18,13 +18,13 @@ public sealed class SendAppointmentRemindersUseCase
 {
     private readonly IAppointmentsReminderClient _appointments;
     private readonly IWhatsAppGatewayClient _whatsApp;
-    private readonly ISendAppointmentNotificationUseCase _email;
+    private readonly ISendMailUseCase _email;
     private readonly ILogger<SendAppointmentRemindersUseCase> _logger;
 
     public SendAppointmentRemindersUseCase(
         IAppointmentsReminderClient appointments,
         IWhatsAppGatewayClient whatsApp,
-        ISendAppointmentNotificationUseCase email,
+        ISendMailUseCase email,
         ILogger<SendAppointmentRemindersUseCase> logger)
     {
         _appointments = appointments;
@@ -59,16 +59,15 @@ public sealed class SendAppointmentRemindersUseCase
     {
         try
         {
-            var request = new AppointmentNotificationRequest
+            var notification = new AppointmentReminderNotification
             {
                 RecipientEmail = candidate.ClientEmail!,
-                ContactName = candidate.ClientFullName,
-                NotificationType = "reminder",
+                RecipientName = candidate.ClientFullName,
                 AppointmentDateTime = candidate.StartsAtUtc,
                 ServiceName = candidate.ProfessionalFullName,
             };
 
-            var outcome = await _email.ExecuteAsync(request, cancellationToken).ConfigureAwait(false);
+            var outcome = await _email.ExecuteAsync(notification, cancellationToken).ConfigureAwait(false);
             if (!outcome.IsSuccess)
             {
                 _logger.LogWarning(
