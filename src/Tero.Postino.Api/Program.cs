@@ -5,11 +5,11 @@ using Tero.Postino.Application.Email.Ports;
 using Tero.Postino.Application.Email.UseCases;
 using Tero.Postino.Application.Reminders;
 using Tero.Postino.Application.Reminders.Ports;
-using Tero.Postino.Infrastructure.Auth;
 using Tero.Postino.Infrastructure.Configuration;
 using Tero.Postino.Infrastructure.Email;
 using Tero.Postino.Infrastructure.RabbitMq;
 using Tero.Postino.Infrastructure.Reminders;
+using Tero.ServiceDefaults.Authentication;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -53,22 +53,13 @@ builder.Services.AddScoped<ISendMailUseCase, SendMailUseCase>();
 // POST-01: job de recordatorios. Options — sin AddValidatedOptions acá (a diferencia del
 // Gateway): un tenant mal configurado en Reminders:TenantIds falla recién en la corrida del
 // job (loguea y sigue con el próximo tenant), no tira abajo el host entero al arrancar.
-builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection(AuthOptions.SectionName));
 builder.Services.Configure<AppointmentsOptions>(builder.Configuration.GetSection(AppointmentsOptions.SectionName));
 builder.Services.Configure<WhatsAppGatewayOptions>(builder.Configuration.GetSection(WhatsAppGatewayOptions.SectionName));
 builder.Services.Configure<ReminderOptions>(builder.Configuration.GetSection(ReminderOptions.SectionName));
 
-// Singleton: la caché de tokens por tenant tiene que sobrevivir entre corridas del job —
-// mismo criterio que en Tero.WhatsApp.Gateway.
-builder.Services.AddHttpClient("tero-auth-service-token", (sp, client) =>
-{
-    var authOptions = sp.GetRequiredService<IOptions<AuthOptions>>().Value;
-    client.BaseAddress = new Uri(EnsureTrailingSlash(authOptions.BaseUrl));
-});
-builder.Services.AddSingleton<IServiceTokenProvider>(sp => new AuthServiceTokenClient(
-    sp.GetRequiredService<IHttpClientFactory>().CreateClient("tero-auth-service-token"),
-    sp.GetRequiredService<IOptions<AuthOptions>>(),
-    sp.GetRequiredService<ILogger<AuthServiceTokenClient>>()));
+// AuthServiceTokenClient centralizado en Tero.ServiceDefaults (backlog de Tero.Shared,
+// SH-P1-1) — antes era una copia propia acá.
+builder.Services.AddTeroAuthServiceTokenClient(builder.Configuration);
 
 builder.Services.AddHttpClient<IAppointmentsReminderClient, AppointmentsReminderClient>((sp, client) =>
 {

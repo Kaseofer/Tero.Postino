@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using Tero.Postino.Application.Reminders.Ports;
 using Tero.Postino.Infrastructure.Auth;
 using Tero.Postino.Infrastructure.Configuration;
+using Tero.ServiceDefaults.Authentication;
 
 namespace Tero.Postino.Infrastructure.Reminders;
 

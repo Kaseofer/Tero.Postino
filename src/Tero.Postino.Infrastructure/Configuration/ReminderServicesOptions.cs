@@ -1,20 +1,5 @@
 namespace Tero.Postino.Infrastructure.Configuration;
 
-/// <summary>Credenciales contra <c>Tero.Auth.Api</c> para pedir tokens de servicio — mismo
-/// rol que la copia de <c>Tero.WhatsApp.Gateway</c>, sin referenciar ese servicio.</summary>
-public sealed class AuthOptions
-{
-    public const string SectionName = "Auth";
-
-    public required string BaseUrl { get; set; }
-
-    /// <summary>Coincide con el <c>ClientId</c> que hay que sembrar del lado de Auth para
-    /// Postino (hoy sólo existe el seed de <c>whatsapp-gateway</c> — falta agregar éste).</summary>
-    public string ClientId { get; set; } = "postino";
-
-    public required string ClientSecret { get; set; }
-}
-
 public sealed class AppointmentsOptions
 {
     public const string SectionName = "Appointments";

@@ -4,8 +4,12 @@
     <PackageReference Include="RabbitMQ.Client" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Tero.Contracts" />
-    <!-- POST-01: AuthServiceTokenClient, AppointmentsReminderClient y WhatsAppGatewayClient
-         necesitan IHttpClientFactory. -->
+    <!-- IServiceTokenProvider vive en Tero.ServiceDefaults (backlog de Tero.Shared, SH-P1-1) —
+         lo consumen AuthenticatedHttpClientBase, AppointmentsReminderClient y
+         WhatsAppGatewayClient. -->
+    <PackageReference Include="Tero.ServiceDefaults" />
+    <!-- POST-01: AppointmentsReminderClient y WhatsAppGatewayClient necesitan
+         IHttpClientFactory. -->
     <PackageReference Include="Microsoft.Extensions.Http" />
   </ItemGroup>
 

@@ -1,7 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using Tero.Postino.Application.Reminders.Ports;
+using Tero.ServiceDefaults.Authentication;
 
 namespace Tero.Postino.Infrastructure.Auth;
 

@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using Tero.Postino.Application.Reminders;
 using Tero.Postino.Application.Reminders.Ports;
 using Tero.Postino.Infrastructure.Auth;
+using Tero.ServiceDefaults.Authentication;
 
 namespace Tero.Postino.Infrastructure.Reminders;
 
