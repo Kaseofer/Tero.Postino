@@ -16,8 +16,11 @@
 
   <ItemGroup>
     <!-- Plantillas de mail (MailTemplateRenderer) — viajan con el deploy, editables como
-         HTML común sin levantar nada. -->
+         HTML/texto común sin levantar nada. *.subject.txt: asunto por tipo+idioma (BACKLOG.md #1). -->
     <Content Include="Templates\**\*.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Templates\**\*.subject.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

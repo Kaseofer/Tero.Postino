@@ -5,14 +5,17 @@ namespace Tero.Postino.Application.Email.UseCases;
 
 /// <summary>
 /// Reemplaza a los tres casos de uso que existían antes (uno por tipo de notificación) — acá
-/// es donde vive todo lo que antes era implícito (asunto, plantilla, mapeo de campos), nunca
-/// en Tero.Shared (input <c>06-boceto-notificaciones-postino-shared</c> del working-task
+/// es donde vive todo lo que antes era implícito (plantilla, mapeo de campos), nunca en
+/// Tero.Shared (input <c>06-boceto-notificaciones-postino-shared</c> del working-task
 /// <c>appointments-specialties</c>).
 ///
 /// El nombre de la plantilla NO se mapea a mano: es directamente <c>notification.NotificationType</c>
-/// (ver <see cref="MailTemplateRenderer"/>, que la busca por convención en
-/// <c>Templates/{idioma}/{NotificationType}.html</c>) — nada que mantener sincronizado cuando
-/// se agrega un tipo nuevo, salvo el archivo en sí.
+/// (ver <see cref="Tero.Postino.Infrastructure.Email.MailTemplateRenderer"/>, que la busca por
+/// convención en <c>Templates/{idioma}/{NotificationType}.html</c> y su asunto en
+/// <c>Templates/{idioma}/{NotificationType}.subject.txt</c>) — nada que mantener sincronizado
+/// cuando se agrega un tipo nuevo, salvo los archivos en sí. El asunto NO se arma acá (ver
+/// BACKLOG.md #1): antes quedaba fijo en español sin importar el idioma pedido; ahora lo
+/// resuelve el consumidor de la cola con el mismo idioma que el cuerpo.
 /// </summary>
 public sealed class SendMailUseCase : ISendMailUseCase
 {
@@ -38,16 +41,14 @@ public sealed class SendMailUseCase : ISendMailUseCase
         }
 
         var messageId = Guid.NewGuid().ToString("N");
-        var (subject, templateModel) = BuildContent(notification);
 
         var mailMessage = new MailMessageDto
         {
             MessageId = messageId,
             To = notification.RecipientEmail,
-            Subject = subject,
             TemplateType = notification.NotificationType.ToString(),
             Language = notification.LanguageCode,
-            TemplateModel = templateModel,
+            TemplateModel = BuildTemplateModel(notification),
         };
 
         try
@@ -76,59 +77,53 @@ public sealed class SendMailUseCase : ISendMailUseCase
 
     /// <summary>
     /// Las 4 variedades de turno (booked/cancelled/rescheduled/reminder) arman el modelo
-    /// exactamente igual — sólo cambia el prefijo del asunto, que sale de
-    /// <c>NotificationType</c> — así que un único <c>case</c> las cubre a las cuatro
-    /// matcheando contra la clase base, en vez de repetir la tupla cuatro veces.
+    /// exactamente igual, así que un único <c>case</c> las cubre a las cuatro matcheando
+    /// contra la clase base, en vez de repetir la construcción cuatro veces.
     /// </summary>
-    private static (string Subject, Dictionary<string, object> TemplateModel) BuildContent(MailNotification notification) =>
+    private static Dictionary<string, object> BuildTemplateModel(MailNotification notification) =>
         notification switch
         {
-            AppointmentNotification n => ($"{AppointmentSubjectPrefix(n.NotificationType)} de cita: {n.ServiceName}", AppointmentModel(n)),
+            AppointmentNotification n => AppointmentModel(n),
 
-            PasswordResetNotification n => (
-                "Restablece tu contraseña",
-                new Dictionary<string, object>
-                {
-                    { "userName", n.RecipientName },
-                    { "resetUrl", $"{n.ActionUrl}?token={n.Token}" },
-                    { "expirationMinutes", n.ExpirationMinutes },
-                    { "priority", n.Priority.ToString() },
-                }),
+            PasswordResetNotification n => new Dictionary<string, object>
+            {
+                { "userName", n.RecipientName },
+                { "resetUrl", BuildActionUrl(n.ActionUrl, n.Token) },
+                { "expirationMinutes", n.ExpirationMinutes },
+            },
 
-            EmailVerificationNotification n => (
-                "Verifica tu correo electrónico",
-                new Dictionary<string, object>
-                {
-                    { "userName", n.RecipientName },
-                    { "verificationUrl", $"{n.ActionUrl}?token={n.Token}" },
-                    { "priority", n.Priority.ToString() },
-                }),
+            EmailVerificationNotification n => new Dictionary<string, object>
+            {
+                { "userName", n.RecipientName },
+                { "verificationUrl", BuildActionUrl(n.ActionUrl, n.Token) },
+            },
 
-            AdminCredentialsNotification n => (
-                $"Credenciales administrador para {n.TenantName}",
-                new Dictionary<string, object>
-                {
-                    { "tenantName", n.TenantName },
-                    { "userEmail", n.RecipientEmail },
-                    { "password", n.Password },
-                }),
+            AdminCredentialsNotification n => new Dictionary<string, object>
+            {
+                { "tenantName", n.TenantName },
+                { "userEmail", n.RecipientEmail },
+                { "password", n.Password },
+            },
 
             // C# no puede probar exhaustividad real sobre una jerarquía de clases (no es un
             // union type cerrado) — así que esto SÍ hace falta, a diferencia de un lenguaje
-            // con sum types. Tirar acá, en vez de caer a un asunto genérico en silencio como
-            // antes, es la garantía que sí podemos dar: un tipo nuevo sin su `case` falla la
-            // primera vez que se manda, no se pierde silenciosamente.
+            // con sum types. Tirar acá, en vez de caer a un genérico en silencio, es la
+            // garantía que sí podemos dar: un tipo nuevo sin su `case` falla la primera vez
+            // que se manda, no se pierde silenciosamente.
             _ => throw new NotSupportedException($"Tipo de notificación no soportado: {notification.GetType().Name}"),
         };
 
-    private static string AppointmentSubjectPrefix(MailNotificationType type) => type switch
+    /// <summary>
+    /// Concatenar a mano (<c>$"{url}?token={token}"</c>) rompía si <paramref name="baseUrl"/>
+    /// ya traía query string (<c>?lang=en</c> → <c>?lang=en?token=...</c>, URL inválida) y
+    /// nunca encodeaba el token — uno con <c>+</c>/<c>=</c> (típico en base64) podía llegar
+    /// truncado del otro lado. BACKLOG.md #5.
+    /// </summary>
+    private static string BuildActionUrl(string baseUrl, string token)
     {
-        MailNotificationType.AppointmentBooked => "Confirmación",
-        MailNotificationType.AppointmentCancelled => "Cancelación",
-        MailNotificationType.AppointmentRescheduled => "Reprogramación",
-        MailNotificationType.AppointmentReminder => "Recordatorio",
-        _ => throw new NotSupportedException($"'{type}' no es un tipo de notificación de turno."),
-    };
+        var separator = baseUrl.Contains('?') ? "&" : "?";
+        return $"{baseUrl}{separator}token={Uri.EscapeDataString(token)}";
+    }
 
     private static Dictionary<string, object> AppointmentModel(AppointmentNotification n)
     {
@@ -137,7 +132,6 @@ public sealed class SendMailUseCase : ISendMailUseCase
             { "contactName", n.RecipientName },
             { "serviceName", n.ServiceName },
             { "appointmentDateTime", n.AppointmentDateTime },
-            { "priority", n.Priority.ToString() },
         };
 
         if (!string.IsNullOrWhiteSpace(n.Location))
@@ -145,6 +139,8 @@ public sealed class SendMailUseCase : ISendMailUseCase
             model["location"] = n.Location;
         }
 
+        // Se muestra en el cuerpo (::optional:durationMinutes::) — antes viajaba en el
+        // modelo sin que ninguna plantilla lo consumiera (BACKLOG.md #9).
         if (n.DurationMinutes.HasValue)
         {
             model["durationMinutes"] = n.DurationMinutes.Value;

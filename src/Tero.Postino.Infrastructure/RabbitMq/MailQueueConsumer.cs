@@ -93,7 +93,15 @@ public sealed class MailQueueConsumer : BackgroundService
                 ? message.HtmlBody
                 : _templateRenderer.Render(message.TemplateType, message.Language, message.TemplateModel);
 
-            await _mailSender.SendAsync(message.To, message.Subject ?? "(sin asunto)", htmlBody, stoppingToken).ConfigureAwait(false);
+            // El asunto viene del archivo .subject.txt del tipo+idioma (BACKLOG.md #1) — antes
+            // SendMailUseCase lo mandaba fijo en español dentro del DTO. Un Subject explícito
+            // en el mensaje (mails sin plantilla, con HtmlBody propio) sigue teniendo prioridad.
+            var subject = !string.IsNullOrEmpty(message.Subject)
+                ? message.Subject
+                : _templateRenderer.RenderSubject(message.TemplateType, message.Language, message.TemplateModel)
+                    ?? "(sin asunto)";
+
+            await _mailSender.SendAsync(message.To, subject, htmlBody, stoppingToken).ConfigureAwait(false);
             await channel.BasicAckAsync(args.DeliveryTag, false, stoppingToken).ConfigureAwait(false);
         }
         catch (Exception ex)

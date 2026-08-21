@@ -1,10 +1,12 @@
 <!--
   Ver es/AppointmentBooked.html para el criterio de esta plantilla (compartida por las 4
-  variedades de turno). Placeholders: {{contactName}} {{serviceName}} {{appointmentDateTime}}
-  {{location}}.
+  variedades de turno; el asunto vive en un .subject.txt aparte, ver BACKLOG.md #1).
+  Placeholders: {{contactName}} {{serviceName}} {{appointmentDateTime}} {{location}}
+  {{durationMinutes}}.
 -->
 <div style="font-family: sans-serif; max-width: 480px;">
   <p>Olá {{contactName}},</p>
   <p style="font-size: 16px;"><strong>{{serviceName}}</strong> — {{appointmentDateTime}}</p>
   ::optional:location::<p><strong>Local:</strong> {{location}}</p>::/optional::
+  ::optional:durationMinutes::<p><strong>Duração:</strong> {{durationMinutes}} minutos</p>::/optional::
 </div>
