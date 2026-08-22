@@ -26,6 +26,11 @@ RUN dotnet publish src/Tero.Postino.Api/Tero.Postino.Api.csproj -c Release -o /a
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
+
+# La imagen base no trae curl ni wget — deploy/docker-compose.yml (repo Tero) lo usa para el
+# healthcheck (GET /alive).
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
 COPY --from=build /app/publish .
 
 ENV ASPNETCORE_URLS=http://+:80
