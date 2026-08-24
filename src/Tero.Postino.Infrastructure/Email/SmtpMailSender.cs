@@ -16,11 +16,13 @@ namespace Tero.Postino.Infrastructure.Email;
 public sealed class SmtpMailSender
 {
     private readonly IOptions<SmtpOptions> _options;
+    private readonly MailJournalWriter _journal;
     private readonly ILogger<SmtpMailSender> _logger;
 
-    public SmtpMailSender(IOptions<SmtpOptions> options, ILogger<SmtpMailSender> logger)
+    public SmtpMailSender(IOptions<SmtpOptions> options, MailJournalWriter journal, ILogger<SmtpMailSender> logger)
     {
         _options = options;
+        _journal = journal;
         _logger = logger;
     }
 
@@ -28,6 +30,10 @@ public sealed class SmtpMailSender
     /// <paramref name="plainTextBody"/> es opcional (BACKLOG.md #8) — cuando viene, se manda
     /// como parte alternativa <c>text/plain</c> junto al HTML (multipart/alternative), en vez
     /// de mandar sólo HTML como antes. Sin ella, el comportamiento es el de siempre.
+    ///
+    /// TODO mail que pasa por acá queda en la bitácora de <see cref="MailJournalWriter"/>,
+    /// se haya podido mandar de verdad o no — pedido explícito para poder revisar/reenviar a
+    /// mano mientras no haya un proveedor SMTP real configurado.
     /// </summary>
     public async Task SendAsync(string to, string subject, string htmlBody, string? plainTextBody = null, CancellationToken cancellationToken = default)
     {
@@ -39,6 +45,8 @@ public sealed class SmtpMailSender
                 "Smtp:Host o Smtp:FromAddress sin configurar — se loguea en vez de mandar. Destinatario: {To}, asunto: {Subject}",
                 to,
                 subject);
+            await _journal.WriteAsync(to, subject, htmlBody, plainTextBody, pending: true, pendingReason: "Smtp:Host/Smtp:FromAddress sin configurar")
+                .ConfigureAwait(false);
             return;
         }
 
@@ -71,5 +79,6 @@ public sealed class SmtpMailSender
 
         await client.SendMailAsync(message, cancellationToken).ConfigureAwait(false);
         _logger.LogInformation("Mail enviado a {To}: {Subject}", to, subject);
+        await _journal.WriteAsync(to, subject, htmlBody, plainTextBody, pending: false).ConfigureAwait(false);
     }
 }

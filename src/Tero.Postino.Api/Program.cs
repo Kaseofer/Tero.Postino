@@ -43,6 +43,8 @@ builder.Services.AddSingleton<IMailPublisher, MailPublisher>();
 // El otro extremo de la cola que llena MailPublisher (acá) y Tero.Auth.Api.QueueEmailSender:
 // hasta esta task nadie la consumía y los mails quedaban encolados para siempre.
 builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection(SmtpOptions.SectionName));
+builder.Services.Configure<MailJournalOptions>(builder.Configuration.GetSection(MailJournalOptions.SectionName));
+builder.Services.AddSingleton<MailJournalWriter>();
 builder.Services.AddSingleton<SmtpMailSender>();
 builder.Services.AddSingleton<MailTemplateRenderer>();
 builder.Services.AddHostedService<MailQueueConsumer>();

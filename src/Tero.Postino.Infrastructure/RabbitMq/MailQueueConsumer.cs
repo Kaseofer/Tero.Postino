@@ -37,17 +37,20 @@ public sealed class MailQueueConsumer : BackgroundService
     private readonly ConnectionFactory _connectionFactory;
     private readonly SmtpMailSender _mailSender;
     private readonly MailTemplateRenderer _templateRenderer;
+    private readonly MailJournalWriter _journal;
     private readonly ILogger<MailQueueConsumer> _logger;
 
     public MailQueueConsumer(
         ConnectionFactory connectionFactory,
         SmtpMailSender mailSender,
         MailTemplateRenderer templateRenderer,
+        MailJournalWriter journal,
         ILogger<MailQueueConsumer> logger)
     {
         _connectionFactory = connectionFactory;
         _mailSender = mailSender;
         _templateRenderer = templateRenderer;
+        _journal = journal;
         _logger = logger;
     }
 
@@ -98,23 +101,31 @@ public sealed class MailQueueConsumer : BackgroundService
             return;
         }
 
+        // Declarados afuera del try: si se agotan los reintentos y el mensaje va a
+        // dead-letter, la bitácora de pendientes necesita el asunto/cuerpo ya resueltos —
+        // volver a renderizar la plantilla en el catch duplicaría el trabajo (y podría volver
+        // a fallar por la misma razón).
+        string? subject = null;
+        string? htmlBody = null;
+        string? plainTextBody = null;
+
         try
         {
-            var htmlBody = !string.IsNullOrEmpty(message.HtmlBody)
+            htmlBody = !string.IsNullOrEmpty(message.HtmlBody)
                 ? message.HtmlBody
                 : _templateRenderer.Render(message.TemplateType, message.Language, message.TemplateModel);
 
             // El asunto viene del archivo .subject.txt del tipo+idioma (BACKLOG.md #1) — antes
             // SendMailUseCase lo mandaba fijo en español dentro del DTO. Un Subject explícito
             // en el mensaje (mails sin plantilla, con HtmlBody propio) sigue teniendo prioridad.
-            var subject = !string.IsNullOrEmpty(message.Subject)
+            subject = !string.IsNullOrEmpty(message.Subject)
                 ? message.Subject
                 : _templateRenderer.RenderSubject(message.TemplateType, message.Language, message.TemplateModel)
                     ?? "(sin asunto)";
 
             // Respeta un PlainTextBody explícito; si no vino, se deriva del HTML ya armado
             // (BACKLOG.md #8) — antes el campo existía en el contrato pero nadie lo llenaba.
-            var plainTextBody = !string.IsNullOrEmpty(message.PlainTextBody)
+            plainTextBody = !string.IsNullOrEmpty(message.PlainTextBody)
                 ? message.PlainTextBody
                 : MailTemplateRenderer.HtmlToPlainText(htmlBody);
 
@@ -148,6 +159,14 @@ public sealed class MailQueueConsumer : BackgroundService
                     ex,
                     "Mensaje {MessageId} agotó los {MaxRetries} reintentos — va a dead-letter ({DeadQueue}).",
                     message.MessageId, MaxRetries, DeadQueueName);
+
+                // Bitácora de pendientes: sólo si llegamos a tener asunto/cuerpo resueltos —
+                // si el fallo fue en el render de la plantilla, no hay nada legible para dejar.
+                if (subject is not null && htmlBody is not null)
+                {
+                    await _journal.WriteAsync(message.To, subject, htmlBody, plainTextBody, pending: true, pendingReason: ex.Message)
+                        .ConfigureAwait(false);
+                }
 
                 var deadHeaders = new Dictionary<string, object?>
                 {
