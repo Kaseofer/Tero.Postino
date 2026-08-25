@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Tero.Contracts.Mail.Requests;
+using Tero.Postino.Application.Email;
 using Tero.Postino.Application.Email.Ports;
 
 namespace Tero.Postino.Controllers;
@@ -37,9 +38,11 @@ public sealed class MailController : ControllerBase
     /// </summary>
     /// <response code="202">Correo encolado exitosamente para envío</response>
     /// <response code="400">Solicitud inválida</response>
+    /// <response code="503">RabbitMQ no está disponible temporalmente</response>
     [HttpPost("send")]
     [ProducesResponseType(typeof(Tero.Contracts.Mail.Responses.MailNotificationResponse), StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Send([FromBody] MailNotification notification, CancellationToken cancellationToken)
     {
         if (!IsServiceToken())
@@ -51,7 +54,15 @@ public sealed class MailController : ControllerBase
 
         if (!outcome.IsSuccess)
         {
-            return BadRequest(new { message = outcome.Message, errors = outcome.Errors });
+            var error = new { message = outcome.Message, errors = outcome.Errors };
+            return outcome.FailureKind switch
+            {
+                SendMailFailureKind.Validation => BadRequest(error),
+                SendMailFailureKind.Infrastructure => StatusCode(StatusCodes.Status503ServiceUnavailable, error),
+                // Un outcome fallido sin categoría es un bug interno; no culpar al caller
+                // con un 400 ni sugerir que un retry necesariamente lo resolverá.
+                _ => StatusCode(StatusCodes.Status500InternalServerError, error),
+            };
         }
 
         var response = new Tero.Contracts.Mail.Responses.MailNotificationResponse
