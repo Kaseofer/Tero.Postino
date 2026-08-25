@@ -26,7 +26,7 @@ public sealed class MailJournalWriter
         _logger = logger;
     }
 
-    public Task WriteAsync(
+    public async Task WriteAsync(
         string? messageId,
         string? templateType,
         string? language,
@@ -40,10 +40,12 @@ public sealed class MailJournalWriter
         var fileName = $"{now:yyyyMMdd_HHmmss_fff}_{safeMessageId}.txt";
         var content = BuildContent(safeMessageId, templateType, language, to, pending, failureCode, requestContext, now);
 
-        WriteFile(Path.Combine(_options.BasePath, now.ToString("yyyy"), now.ToString("MM")), fileName, content);
+        await WriteFileAsync(
+                Path.Combine(_options.BasePath, now.ToString("yyyy"), now.ToString("MM")),
+                fileName,
+                content)
+            .ConfigureAwait(false);
         CleanupExpiredFiles(now);
-
-        return Task.CompletedTask;
     }
 
     public static string HashRecipient(string recipient)
@@ -76,13 +78,13 @@ public sealed class MailJournalWriter
         return value;
     }
 
-    private void WriteFile(string directory, string fileName, string content)
+    private async Task WriteFileAsync(string directory, string fileName, string content)
     {
         try
         {
             Directory.CreateDirectory(directory);
             var path = Path.Combine(directory, fileName);
-            File.WriteAllText(path, content, Encoding.UTF8);
+            await File.WriteAllTextAsync(path, content, Encoding.UTF8).ConfigureAwait(false);
             SetRestrictedPermissions(directory, path);
         }
         catch (Exception ex)

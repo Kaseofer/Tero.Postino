@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 using Tero.Postino.Application.Email.Ports;
 
@@ -11,12 +12,12 @@ namespace Tero.Postino.Infrastructure.RabbitMq;
 public sealed class MailPublisher : IMailPublisher
 {
     private readonly ConnectionFactory _factory;
-    private const string ExchangeName = "postino.mail";
-    private const string RoutingKey = "mail.send";
+    private readonly ILogger<MailPublisher> _logger;
 
-    public MailPublisher(ConnectionFactory factory)
+    public MailPublisher(ConnectionFactory factory, ILogger<MailPublisher> logger)
     {
         _factory = factory ?? throw new ArgumentNullException(nameof(factory));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     /// <remarks>
@@ -36,11 +37,14 @@ public sealed class MailPublisher : IMailPublisher
                 .ConfigureAwait(false);
 
             // Declarar exchange y queue duraderas
-            await ch.ExchangeDeclareAsync(ExchangeName, ExchangeType.Direct, durable: true, autoDelete: false,
+            await ch.ExchangeDeclareAsync(MailQueueTopology.ExchangeName, ExchangeType.Direct, durable: true, autoDelete: false,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
-            await ch.QueueDeclareAsync(queue: "postino.mail.queue", durable: true, exclusive: false, autoDelete: false,
+            await ch.QueueDeclareAsync(queue: MailQueueTopology.QueueName, durable: true, exclusive: false, autoDelete: false,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
-            await ch.QueueBindAsync(queue: "postino.mail.queue", exchange: ExchangeName, routingKey: RoutingKey,
+            await ch.QueueBindAsync(
+                queue: MailQueueTopology.QueueName,
+                exchange: MailQueueTopology.ExchangeName,
+                routingKey: MailQueueTopology.RoutingKey,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
             // Serializar el mensaje
@@ -55,8 +59,8 @@ public sealed class MailPublisher : IMailPublisher
             // mandatory:true convierte también un mensaje no enrutable en PublishException.
             using var publishCancellation = RabbitMqChannelOptions.CreatePublishCancellation(cancellationToken);
             await ch.BasicPublishAsync(
-                exchange: ExchangeName,
-                routingKey: RoutingKey,
+                exchange: MailQueueTopology.ExchangeName,
+                routingKey: MailQueueTopology.RoutingKey,
                 mandatory: true,
                 basicProperties: props,
                 body: bytes,
@@ -68,7 +72,7 @@ public sealed class MailPublisher : IMailPublisher
         }
         catch (Exception ex)
         {
-            // Log del error (en producción usar ILogger)
+            _logger.LogError(ex, "No se pudo publicar el mail {MessageId} en RabbitMQ.", message.MessageId);
             throw new InvalidOperationException($"Error publishing mail message {message.MessageId}", ex);
         }
     }

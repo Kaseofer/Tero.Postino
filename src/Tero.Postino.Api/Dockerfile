@@ -10,7 +10,6 @@ COPY Directory.Build.props Directory.Packages.props global.json nuget.config ./
 COPY src/Tero.Postino.Api/Tero.Postino.Api.csproj src/Tero.Postino.Api/
 COPY src/Tero.Postino.Application/Tero.Postino.Application.csproj src/Tero.Postino.Application/
 COPY src/Tero.Postino.Infrastructure/Tero.Postino.Infrastructure.csproj src/Tero.Postino.Infrastructure/
-COPY src/Tero.Postino.Domain/Tero.Postino.Domain.csproj src/Tero.Postino.Domain/
 
 # Los paquetes Tero.* salen de GitHub Packages, que pide credenciales. nuget.config las lee de
 # GITHUB_PACKAGES_USER y GITHUB_PACKAGES_TOKEN, así que quien construya esta imagen tiene que

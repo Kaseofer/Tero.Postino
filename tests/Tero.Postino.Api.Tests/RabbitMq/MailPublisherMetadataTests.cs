@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Tero.Postino.Application.Email.Ports;
 using Tero.Postino.Infrastructure.RabbitMq;
 
@@ -5,6 +6,31 @@ namespace Tero.Postino.Api.Tests.RabbitMq;
 
 public sealed class MailPublisherMetadataTests
 {
+    [Fact]
+    public void MailMessageDto_JsonRoundTripPreservesTemplateModel()
+    {
+        var message = new MailMessageDto
+        {
+            To = "patient@example.com",
+            CallerClientId = "postino-tests",
+            CorrelationId = "correlation-123",
+            TemplateModel = new Dictionary<string, object>
+            {
+                ["contactName"] = "Ana",
+                ["durationMinutes"] = 45,
+            },
+        };
+
+        var serialized = JsonSerializer.SerializeToUtf8Bytes(message);
+        var deserialized = JsonSerializer.Deserialize<MailMessageDto>(
+            serialized,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        Assert.NotNull(deserialized);
+        Assert.Equal("Ana", Assert.IsType<JsonElement>(deserialized.TemplateModel!["contactName"]).GetString());
+        Assert.Equal(45, Assert.IsType<JsonElement>(deserialized.TemplateModel["durationMinutes"]).GetInt32());
+    }
+
     [Fact]
     public void CreateBasicProperties_IncludesAuditMetadata()
     {

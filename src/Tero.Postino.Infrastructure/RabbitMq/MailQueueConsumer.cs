@@ -12,9 +12,9 @@ namespace Tero.Postino.Infrastructure.RabbitMq;
 /// <summary>
 /// El otro extremo de <c>MailPublisher</c> — único productor de <c>postino.mail</c> desde que
 /// Auth migró de publicar HTML crudo directo a la cola a llamar <c>POST api/mail/send</c>
-/// como todos los demás (ver docs/paquetes-shared.md del repo Tero). <see cref="MailQueueMessage"/>
-/// ya no necesita tolerar el shape viejo de Auth (<c>templateName</c>/<c>cc</c>/<c>bcc</c>) —
-/// espeja 1:1 al <c>MailMessageDto</c> que arma <c>SendMailUseCase</c>.
+/// como todos los demás (ver docs/paquetes-shared.md del repo Tero). El consumidor deserializa
+/// directamente <see cref="MailMessageDto"/>, el mismo contrato que publica
+/// <c>SendMailUseCase</c>, y ya no mantiene una copia que pueda divergir.
 ///
 /// <c>prefetchCount: 1</c> + ack manual, mismo criterio que
 /// <c>Tero.WhatsApp.Gateway.InboundWebhookConsumer</c>. Un error de render o SMTP ya no se
@@ -25,12 +25,6 @@ namespace Tero.Postino.Infrastructure.RabbitMq;
 /// </summary>
 public sealed class MailQueueConsumer : BackgroundService
 {
-    private const string ExchangeName = "postino.mail";
-    private const string QueueName = "postino.mail.queue";
-    private const string RoutingKey = "mail.send";
-    private const string DeadQueueName = "postino.mail.dead";
-    private const string DeadRoutingKey = "mail.dead";
-    private const string RetryCountHeader = "x-retry-count";
     private const int MaxRetries = 3;
 
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
@@ -63,22 +57,22 @@ public sealed class MailQueueConsumer : BackgroundService
                 stoppingToken)
             .ConfigureAwait(false);
 
-        await channel.ExchangeDeclareAsync(ExchangeName, ExchangeType.Direct, durable: true, autoDelete: false, cancellationToken: stoppingToken)
+        await channel.ExchangeDeclareAsync(MailQueueTopology.ExchangeName, ExchangeType.Direct, durable: true, autoDelete: false, cancellationToken: stoppingToken)
             .ConfigureAwait(false);
-        await channel.QueueDeclareAsync(QueueName, durable: true, exclusive: false, autoDelete: false, cancellationToken: stoppingToken)
+        await channel.QueueDeclareAsync(MailQueueTopology.QueueName, durable: true, exclusive: false, autoDelete: false, cancellationToken: stoppingToken)
             .ConfigureAwait(false);
-        await channel.QueueBindAsync(QueueName, ExchangeName, RoutingKey, cancellationToken: stoppingToken).ConfigureAwait(false);
+        await channel.QueueBindAsync(MailQueueTopology.QueueName, MailQueueTopology.ExchangeName, MailQueueTopology.RoutingKey, cancellationToken: stoppingToken).ConfigureAwait(false);
 
-        await channel.QueueDeclareAsync(DeadQueueName, durable: true, exclusive: false, autoDelete: false, cancellationToken: stoppingToken)
+        await channel.QueueDeclareAsync(MailQueueTopology.DeadQueueName, durable: true, exclusive: false, autoDelete: false, cancellationToken: stoppingToken)
             .ConfigureAwait(false);
-        await channel.QueueBindAsync(DeadQueueName, ExchangeName, DeadRoutingKey, cancellationToken: stoppingToken).ConfigureAwait(false);
+        await channel.QueueBindAsync(MailQueueTopology.DeadQueueName, MailQueueTopology.ExchangeName, MailQueueTopology.DeadRoutingKey, cancellationToken: stoppingToken).ConfigureAwait(false);
 
         await channel.BasicQosAsync(0, prefetchCount: 1, global: false, stoppingToken).ConfigureAwait(false);
 
         var consumer = new AsyncEventingBasicConsumer(channel);
         consumer.ReceivedAsync += (_, args) => HandleMessageAsync(channel, args, stoppingToken);
 
-        await channel.BasicConsumeAsync(QueueName, autoAck: false, consumer, stoppingToken).ConfigureAwait(false);
+        await channel.BasicConsumeAsync(MailQueueTopology.QueueName, autoAck: false, consumer, stoppingToken).ConfigureAwait(false);
 
         // El consumo real ocurre en ReceivedAsync; esto sólo mantiene vivo el servicio.
         await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken).ConfigureAwait(false);
@@ -86,21 +80,21 @@ public sealed class MailQueueConsumer : BackgroundService
 
     private async Task HandleMessageAsync(IChannel channel, BasicDeliverEventArgs args, CancellationToken stoppingToken)
     {
-        MailQueueMessage? message;
+        MailMessageDto? message;
         try
         {
-            message = JsonSerializer.Deserialize<MailQueueMessage>(args.Body.Span, SerializerOptions);
+            message = JsonSerializer.Deserialize<MailMessageDto>(args.Body.Span, SerializerOptions);
         }
         catch (JsonException ex)
         {
-            _logger.LogError(ex, "Mensaje de {Queue} no se pudo deserializar — se descarta sin reintentar.", QueueName);
+            _logger.LogError(ex, "Mensaje de {Queue} no se pudo deserializar — se descarta sin reintentar.", MailQueueTopology.QueueName);
             await channel.BasicNackAsync(args.DeliveryTag, false, requeue: false, stoppingToken).ConfigureAwait(false);
             return;
         }
 
         if (message is null || string.IsNullOrWhiteSpace(message.To))
         {
-            _logger.LogError("Mensaje sin destinatario en {Queue} — se descarta sin reintentar.", QueueName);
+            _logger.LogError("Mensaje sin destinatario en {Queue} — se descarta sin reintentar.", MailQueueTopology.QueueName);
             await channel.BasicNackAsync(args.DeliveryTag, false, requeue: false, stoppingToken).ConfigureAwait(false);
             return;
         }
@@ -123,16 +117,17 @@ public sealed class MailQueueConsumer : BackgroundService
 
         try
         {
+            var templateModel = ToTemplateModel(message.TemplateModel);
             var htmlBody = !string.IsNullOrEmpty(message.HtmlBody)
                 ? message.HtmlBody
-                : _templateRenderer.Render(message.TemplateType, message.Language, message.TemplateModel);
+                : _templateRenderer.Render(message.TemplateType, message.Language, templateModel);
 
             // El asunto viene del archivo .subject.txt del tipo+idioma (BACKLOG.md #1) — antes
             // SendMailUseCase lo mandaba fijo en español dentro del DTO. Un Subject explícito
             // en el mensaje (mails sin plantilla, con HtmlBody propio) sigue teniendo prioridad.
             var subject = !string.IsNullOrEmpty(message.Subject)
                 ? message.Subject
-                : _templateRenderer.RenderSubject(message.TemplateType, message.Language, message.TemplateModel)
+                : _templateRenderer.RenderSubject(message.TemplateType, message.Language, templateModel)
                     ?? "(sin asunto)";
 
             // Respeta un PlainTextBody explícito; si no vino, se deriva del HTML ya armado
@@ -175,7 +170,7 @@ public sealed class MailQueueConsumer : BackgroundService
                 await Task.Delay(backoff, stoppingToken).ConfigureAwait(false);
                 try
                 {
-                    await RepublishAsync(channel, ExchangeName, RoutingKey, args.Body, nextAttempt, headers: null, stoppingToken)
+                    await RepublishAsync(channel, MailQueueTopology.ExchangeName, MailQueueTopology.RoutingKey, args.Body, nextAttempt, headers: null, stoppingToken)
                         .ConfigureAwait(false);
                 }
                 catch (Exception publishException) when (!stoppingToken.IsCancellationRequested)
@@ -192,7 +187,7 @@ public sealed class MailQueueConsumer : BackgroundService
                 _logger.LogError(
                     ex,
                     "Mensaje {MessageId} agotó los {MaxRetries} reintentos — va a dead-letter ({DeadQueue}).",
-                    safeMessageId, MaxRetries, DeadQueueName);
+                    safeMessageId, MaxRetries, MailQueueTopology.DeadQueueName);
 
                 var failureCode = ex.GetType().Name;
                 await _journal.WriteAsync(
@@ -208,7 +203,7 @@ public sealed class MailQueueConsumer : BackgroundService
                 var deadHeaders = new Dictionary<string, object?>
                 {
                     ["x-dead-letter-reason"] = failureCode,
-                    ["x-original-routing-key"] = RoutingKey,
+                    ["x-original-routing-key"] = MailQueueTopology.RoutingKey,
                 };
                 var deadLetterBody = JsonSerializer.SerializeToUtf8Bytes(
                     new DeadLetterMetadata
@@ -227,7 +222,7 @@ public sealed class MailQueueConsumer : BackgroundService
                     SerializerOptions);
                 try
                 {
-                    await RepublishAsync(channel, ExchangeName, DeadRoutingKey, deadLetterBody, retryCount, deadHeaders, stoppingToken)
+                    await RepublishAsync(channel, MailQueueTopology.ExchangeName, MailQueueTopology.DeadRoutingKey, deadLetterBody, retryCount, deadHeaders, stoppingToken)
                         .ConfigureAwait(false);
                 }
                 catch (Exception publishException) when (!stoppingToken.IsCancellationRequested)
@@ -253,7 +248,7 @@ public sealed class MailQueueConsumer : BackgroundService
         var allHeaders = headers is null
             ? new Dictionary<string, object?>()
             : new Dictionary<string, object?>(headers);
-        allHeaders[RetryCountHeader] = retryCount;
+        allHeaders[MailQueueTopology.RetryCountHeader] = retryCount;
 
         var props = new BasicProperties
         {
@@ -287,7 +282,7 @@ public sealed class MailQueueConsumer : BackgroundService
             exception,
             "No se confirmó la republicación de {MessageId}; el mensaje original vuelve a {Queue}.",
             messageId,
-            QueueName);
+            MailQueueTopology.QueueName);
         await channel.BasicNackAsync(args.DeliveryTag, multiple: false, requeue: true, cancellationToken)
             .ConfigureAwait(false);
     }
@@ -295,7 +290,7 @@ public sealed class MailQueueConsumer : BackgroundService
     private static int GetRetryCount(IReadOnlyBasicProperties properties)
     {
         if (properties.Headers is not null
-            && properties.Headers.TryGetValue(RetryCountHeader, out var raw))
+            && properties.Headers.TryGetValue(MailQueueTopology.RetryCountHeader, out var raw))
         {
             return raw switch
             {
@@ -309,22 +304,13 @@ public sealed class MailQueueConsumer : BackgroundService
         return 0;
     }
 
-    /// <summary>Espeja 1:1 al <c>MailMessageDto</c> de <c>SendMailUseCase</c> — ver el
-    /// comentario de clase.</summary>
-    private sealed class MailQueueMessage
+    private static Dictionary<string, JsonElement>? ToTemplateModel(Dictionary<string, object>? model)
     {
-        public string? MessageId { get; set; }
-        public string To { get; set; } = "";
-        public string? Subject { get; set; }
-        public string? HtmlBody { get; set; }
-        public string? PlainTextBody { get; set; }
-        public string? TemplateType { get; set; }
-        public string? Language { get; set; }
-        public string? TenantId { get; set; }
-        public string? CallerClientId { get; set; }
-        public string? CorrelationId { get; set; }
-        public DateTimeOffset OccurredAtUtc { get; set; }
-        public Dictionary<string, JsonElement>? TemplateModel { get; set; }
+        return model?.ToDictionary(
+            pair => pair.Key,
+            pair => pair.Value is JsonElement element
+                ? element
+                : JsonSerializer.SerializeToElement(pair.Value, SerializerOptions));
     }
 
     private sealed class DeadLetterMetadata

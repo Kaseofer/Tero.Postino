@@ -1,18 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\Tero.Postino.Domain\Tero.Postino.Domain.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="Tero.Contracts" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
-
-    <!-- PENDIENTE: esta capa no debería depender de HTTP. Está acá porque
-         IServiceIdentityValidator recibe un HttpContext, que es una filtración de la capa web
-         hacia adentro. Al reemplazar la autenticación por tokens estáticos por los tokens de
-         servicio que emite Auth, la interfaz deja de necesitarlo y esta referencia se va. -->
-    <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" />
   </ItemGroup>
 
 </Project>
