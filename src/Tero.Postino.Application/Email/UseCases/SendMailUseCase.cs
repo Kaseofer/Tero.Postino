@@ -101,8 +101,9 @@ public sealed class SendMailUseCase : ISendMailUseCase
     /// enriquecen con sus datos propios para que el contrato no pierda información antes de
     /// llegar a la plantilla (PO3-DAT-1).
     /// </summary>
-    private static Dictionary<string, object> BuildTemplateModel(MailNotification notification) =>
-        notification switch
+    private static Dictionary<string, object> BuildTemplateModel(MailNotification notification)
+    {
+        var model = notification switch
         {
             AppointmentNotification n => AppointmentModel(n),
 
@@ -135,6 +136,19 @@ public sealed class SendMailUseCase : ISendMailUseCase
             _ => throw new NotSupportedException($"Tipo de notificación no soportado: {notification.GetType().Name}"),
         };
 
+        // Las plantillas visuales comparten datos de marca. Algunos contratos anteriores a
+        // 0.9.2 todavía no los transportan; se agregan valores seguros para que el correo no
+        // exponga placeholders sin resolver mientras esos productores migran.
+        model.TryAdd("organizationName", notification is AdminCredentialsNotification admin
+            ? admin.TenantName
+            : "Tero");
+        model.TryAdd("organizationPhone", string.Empty);
+        model.TryAdd("organizationWhatsapp", string.Empty);
+        model.TryAdd("organizationEmail", string.Empty);
+
+        return model;
+    }
+
     /// <summary>
     /// <see cref="UriBuilder"/> mantiene el query antes del fragmento. La concatenación
     /// anterior producía <c>#paso?token=...</c> y el servidor nunca recibía el token.
@@ -155,6 +169,12 @@ public sealed class SendMailUseCase : ISendMailUseCase
             { "contactName", n.RecipientName },
             { "serviceName", n.ServiceName },
             { "appointmentDateTime", n.AppointmentDateTime },
+            { "organizationName", ValueOrDefault(n.OrganizationName, "Tero") },
+            { "organizationPhone", ValueOrDefault(n.OrganizationPhone) },
+            { "organizationWhatsapp", ValueOrDefault(n.OrganizationWhatsApp) },
+            // Las plantillas muestran siempre el profesional; los eventos antiguos no lo
+            // incluían, por eso el servicio es el fallback más informativo disponible.
+            { "professionalName", ValueOrDefault(n.ProfessionalName, n.ServiceName) },
         };
 
         if (!string.IsNullOrWhiteSpace(n.Location))
@@ -169,6 +189,9 @@ public sealed class SendMailUseCase : ISendMailUseCase
             model["durationMinutes"] = n.DurationMinutes.Value;
         }
 
+        AddWhenPresent(model, "specialty", n.Specialty);
+        AddWhenPresent(model, "appointmentUrl", n.AppointmentUrl);
+
         if (n is AppointmentCancelledNotification cancelled
             && !string.IsNullOrWhiteSpace(cancelled.CancellationReason))
         {
@@ -182,6 +205,17 @@ public sealed class SendMailUseCase : ISendMailUseCase
 
         return model;
     }
+
+    private static void AddWhenPresent(Dictionary<string, object> model, string key, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            model[key] = value;
+        }
+    }
+
+    private static string ValueOrDefault(string? value, string fallback = "") =>
+        string.IsNullOrWhiteSpace(value) ? fallback : value;
 
     private static List<string> Validate(MailNotification notification)
     {

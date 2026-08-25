@@ -55,7 +55,7 @@ public sealed class NotificationContentTests
     }
 
     [Theory]
-    [InlineData("es", "Motivo:")]
+    [InlineData("es", "Motivo de la cancelación")]
     [InlineData("en", "Reason:")]
     [InlineData("pt", "Motivo:")]
     public void Render_Cancelacion_MuestraElMotivoEnCadaIdioma(string language, string label)
@@ -77,7 +77,7 @@ public sealed class NotificationContentTests
     }
 
     [Theory]
-    [InlineData("es", "Horario anterior:")]
+    [InlineData("es", "Horario anterior")]
     [InlineData("en", "Previous time:")]
     [InlineData("pt", "Horário anterior:")]
     public void Render_Reprogramacion_MuestraHorarioAnteriorEnCadaIdioma(string language, string label)
@@ -158,6 +158,26 @@ public sealed class NotificationContentTests
             publisher.Message!.TemplateModel!["resetUrl"]);
     }
 
+    [Fact]
+    public async Task PlantillasVisuales_ConModeloGeneradoPorPostino_NoDejanPlaceholders()
+    {
+        var renderer = CreateRenderer();
+
+        foreach (var notification in CreateAllNotificationTypes())
+        {
+            var publisher = new CapturingPublisher();
+            var outcome = await CreateUseCase(publisher).ExecuteAsync(notification);
+
+            Assert.True(outcome.IsSuccess);
+            var message = Assert.IsType<MailMessageDto>(publisher.Message);
+            var html = renderer.Render(message.TemplateType, "es", JsonModel(message.TemplateModel!));
+
+            Assert.DoesNotContain("{{", html);
+            Assert.DoesNotContain("::optional:", html);
+            Assert.DoesNotContain("::/optional::", html);
+        }
+    }
+
     private static SendMailUseCase CreateUseCase(IMailPublisher publisher) =>
         new(publisher, NullLogger<SendMailUseCase>.Instance);
 
@@ -178,6 +198,68 @@ public sealed class NotificationContentTests
             Token = token,
             ExpirationMinutes = 60,
         };
+
+    private static MailNotification[] CreateAllNotificationTypes()
+    {
+        var appointmentDateTime = DateTime.UtcNow.AddDays(2);
+
+        return
+        [
+            new AppointmentBookedNotification
+            {
+                RecipientEmail = "persona@example.com",
+                RecipientName = "Ana",
+                ServiceName = "Consulta",
+                AppointmentDateTime = appointmentDateTime,
+                OrganizationName = "Centro Tero",
+                OrganizationPhone = "+54 11 5555-0000",
+                OrganizationWhatsApp = "+54 11 5555-0000",
+                ProfessionalName = "Dra. Pérez",
+                Specialty = "Clínica médica",
+                AppointmentUrl = "https://app.tero.test/turnos/1",
+            },
+            new AppointmentReminderNotification
+            {
+                RecipientEmail = "persona@example.com",
+                RecipientName = "Ana",
+                ServiceName = "Consulta",
+                AppointmentDateTime = appointmentDateTime,
+            },
+            new AppointmentCancelledNotification
+            {
+                RecipientEmail = "persona@example.com",
+                RecipientName = "Ana",
+                ServiceName = "Consulta",
+                AppointmentDateTime = appointmentDateTime,
+                CancellationReason = "Cambio de agenda",
+            },
+            new AppointmentRescheduledNotification
+            {
+                RecipientEmail = "persona@example.com",
+                RecipientName = "Ana",
+                ServiceName = "Consulta",
+                PreviousAppointmentDateTime = appointmentDateTime,
+                AppointmentDateTime = appointmentDateTime.AddHours(2),
+            },
+            CreatePasswordReset(),
+            new EmailVerificationNotification
+            {
+                RecipientEmail = "persona@example.com",
+                RecipientName = "Ana",
+                ActionUrl = "https://app.tero.test/verificar",
+                Token = "token",
+            },
+            new AdminCredentialsNotification
+            {
+                RecipientEmail = "admin@example.com",
+                RecipientName = "Admin",
+                TenantName = "Centro Tero",
+                ActionUrl = "https://app.tero.test/clave",
+                Token = "token",
+                ExpirationMinutes = 60,
+            },
+        ];
+    }
 
     private sealed class CapturingPublisher : IMailPublisher
     {
