@@ -37,6 +37,7 @@ public sealed class AppointmentsReminderClient : AuthenticatedHttpClientBase, IA
         return (wire ?? [])
             .Select(w => new ReminderCandidate(
                 w.AppointmentId,
+                w.ClaimToken,
                 w.StartsAtUtc,
                 w.ProfessionalFullName,
                 w.ClientId,
@@ -48,10 +49,44 @@ public sealed class AppointmentsReminderClient : AuthenticatedHttpClientBase, IA
             .ToList();
     }
 
+    public Task CompleteReminderClaimAsync(
+        Guid tenantId,
+        Guid appointmentId,
+        Guid claimToken,
+        CancellationToken cancellationToken = default) =>
+        SetClaimOutcomeAsync(tenantId, appointmentId, claimToken, "complete", cancellationToken);
+
+    public Task ReleaseReminderClaimAsync(
+        Guid tenantId,
+        Guid appointmentId,
+        Guid claimToken,
+        CancellationToken cancellationToken = default) =>
+        SetClaimOutcomeAsync(tenantId, appointmentId, claimToken, "release", cancellationToken);
+
+    private async Task SetClaimOutcomeAsync(
+        Guid tenantId,
+        Guid appointmentId,
+        Guid claimToken,
+        string outcome,
+        CancellationToken cancellationToken)
+    {
+        var body = new ReminderClaimWireRequest(claimToken);
+        using var response = await SendAuthenticatedAsync(
+                tenantId,
+                () => Post($"api/appointments/{appointmentId:D}/reminder-claim/{outcome}", body),
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        response.EnsureSuccessStatusCode();
+    }
+
     private sealed record ClaimPendingRemindersWireRequest(int WindowHours);
+
+    private sealed record ReminderClaimWireRequest(Guid ClaimToken);
 
     private sealed record ReminderCandidateWireResponse(
         Guid AppointmentId,
+        Guid ClaimToken,
         DateTime StartsAtUtc,
         string ProfessionalFullName,
         Guid ClientId,

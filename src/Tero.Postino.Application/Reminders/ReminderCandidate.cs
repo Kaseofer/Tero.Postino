@@ -5,6 +5,7 @@ namespace Tero.Postino.Application.Reminders;
 /// resto de los clientes HTTP inter-servicio de Tero.</summary>
 public sealed record ReminderCandidate(
     Guid AppointmentId,
+    Guid ClaimToken,
     DateTime StartsAtUtc,
     string ProfessionalFullName,
     Guid ClientId,

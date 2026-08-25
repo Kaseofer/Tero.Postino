@@ -9,10 +9,8 @@ namespace Tero.Postino.Application.Reminders;
 /// POST-01: orquesta un tenant por corrida — reclama candidatos (Appointments ya los marcó
 /// atómicamente como reclamados) y manda por cada canal que el cliente tenga habilitado.
 ///
-/// Cada envío individual (un email, un WhatsApp) se aísla en su propio try/catch a propósito:
-/// el turno YA está marcado como reclamado del lado de Appointments — si un envío falla, no
-/// hay forma de "reintentar sólo ese", así que lo único que queda es no dejar que esa falla
-/// tire abajo el resto de los candidatos de esta corrida. Queda logueado, no silencioso.
+/// El claim es un lease recuperable: se completa sólo cuando todos los canales solicitados
+/// fueron despachados; ante fallo se libera y ante una caída abrupta vence automáticamente.
 /// </summary>
 public sealed class SendAppointmentRemindersUseCase
 {
@@ -41,21 +39,66 @@ public sealed class SendAppointmentRemindersUseCase
 
         foreach (var candidate in candidates)
         {
-            if (candidate.ClientNotifyByEmail && !string.IsNullOrWhiteSpace(candidate.ClientEmail))
+            try
             {
-                await TrySendEmailAsync(candidate, cancellationToken).ConfigureAwait(false);
+                await ProcessCandidateAsync(tenantId, candidate, cancellationToken).ConfigureAwait(false);
             }
-
-            if (candidate.ClientNotifyByWhatsApp && !string.IsNullOrWhiteSpace(candidate.ClientWhatsAppPhone))
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                await TrySendWhatsAppAsync(tenantId, candidate, cancellationToken).ConfigureAwait(false);
+                // Best effort: si el host todavía puede llamar a Appointments, libera de
+                // inmediato; si no, el lease vence y otra corrida lo recupera.
+                await TryReleaseClaimAsync(tenantId, candidate, CancellationToken.None).ConfigureAwait(false);
+                throw;
             }
         }
 
         return candidates.Count;
     }
 
-    private async Task TrySendEmailAsync(ReminderCandidate candidate, CancellationToken cancellationToken)
+    private async Task ProcessCandidateAsync(
+        Guid tenantId,
+        ReminderCandidate candidate,
+        CancellationToken cancellationToken)
+    {
+        var allRequestedChannelsSucceeded = true;
+
+        if (candidate.ClientNotifyByEmail)
+        {
+            if (string.IsNullOrWhiteSpace(candidate.ClientEmail))
+            {
+                allRequestedChannelsSucceeded = false;
+                _logger.LogWarning("El turno {AppointmentId} pide email pero el cliente no tiene dirección.", candidate.AppointmentId);
+            }
+            else
+            {
+                allRequestedChannelsSucceeded &= await TrySendEmailAsync(candidate, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        if (candidate.ClientNotifyByWhatsApp)
+        {
+            if (string.IsNullOrWhiteSpace(candidate.ClientWhatsAppPhone))
+            {
+                allRequestedChannelsSucceeded = false;
+                _logger.LogWarning("El turno {AppointmentId} pide WhatsApp pero el cliente no tiene teléfono.", candidate.AppointmentId);
+            }
+            else
+            {
+                allRequestedChannelsSucceeded &= await TrySendWhatsAppAsync(tenantId, candidate, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        if (allRequestedChannelsSucceeded)
+        {
+            await TryCompleteClaimAsync(tenantId, candidate, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            await TryReleaseClaimAsync(tenantId, candidate, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task<bool> TrySendEmailAsync(ReminderCandidate candidate, CancellationToken cancellationToken)
     {
         try
         {
@@ -75,14 +118,21 @@ public sealed class SendAppointmentRemindersUseCase
                     candidate.AppointmentId,
                     outcome.Message);
             }
+
+            return outcome.IsSuccess;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Falló el recordatorio por email del turno {AppointmentId}.", candidate.AppointmentId);
+            return false;
         }
     }
 
-    private async Task TrySendWhatsAppAsync(Guid tenantId, ReminderCandidate candidate, CancellationToken cancellationToken)
+    private async Task<bool> TrySendWhatsAppAsync(Guid tenantId, ReminderCandidate candidate, CancellationToken cancellationToken)
     {
         try
         {
@@ -97,10 +147,61 @@ public sealed class SendAppointmentRemindersUseCase
             await _whatsApp
                 .SendReminderAsync(tenantId, candidate.ClientWhatsAppPhone!, idempotencyKey, bodyVariables, cancellationToken)
                 .ConfigureAwait(false);
+
+            return true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Falló el recordatorio por WhatsApp del turno {AppointmentId}.", candidate.AppointmentId);
+            return false;
+        }
+    }
+
+    private async Task TryCompleteClaimAsync(
+        Guid tenantId,
+        ReminderCandidate candidate,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _appointments
+                .CompleteReminderClaimAsync(tenantId, candidate.AppointmentId, candidate.ClaimToken, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // No completar conserva el lease: otra corrida lo recuperará al vencer.
+            _logger.LogError(ex, "No se pudo completar el claim del turno {AppointmentId}.", candidate.AppointmentId);
+        }
+    }
+
+    private async Task TryReleaseClaimAsync(
+        Guid tenantId,
+        ReminderCandidate candidate,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _appointments
+                .ReleaseReminderClaimAsync(tenantId, candidate.AppointmentId, candidate.ClaimToken, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // Si el release no llega, el lease expira; no se pierde definitivamente.
+            _logger.LogError(ex, "No se pudo liberar el claim del turno {AppointmentId}.", candidate.AppointmentId);
         }
     }
 }
