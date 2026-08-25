@@ -107,7 +107,11 @@ public sealed class SendAppointmentRemindersUseCase
                 RecipientEmail = candidate.ClientEmail!,
                 RecipientName = candidate.ClientFullName,
                 AppointmentDateTime = candidate.StartsAtUtc,
-                ServiceName = candidate.ProfessionalFullName,
+                ServiceName = ServiceNameOrDefault(candidate.ServiceName, candidate.LanguageCode),
+                DurationMinutes = candidate.DurationMinutes,
+                Location = candidate.Location,
+                ProfessionalName = candidate.ProfessionalFullName,
+                LanguageCode = candidate.LanguageCode,
             };
 
             var requestContext = new MailRequestContext
@@ -116,6 +120,7 @@ public sealed class SendAppointmentRemindersUseCase
                 CallerClientId = "postino-reminder-worker",
                 CorrelationId = $"reminder-{candidate.AppointmentId:N}",
                 OccurredAtUtc = DateTimeOffset.UtcNow,
+                RecipientTimeZoneId = candidate.TimeZoneId,
             };
             var outcome = await _email.ExecuteAsync(notification, cancellationToken, requestContext).ConfigureAwait(false);
             if (!outcome.IsSuccess)
@@ -144,15 +149,22 @@ public sealed class SendAppointmentRemindersUseCase
         try
         {
             var idempotencyKey = $"reminder:{candidate.AppointmentId:N}";
+            var localStartsAt = ConvertToLocal(candidate.StartsAtUtc, candidate.TimeZoneId);
             var bodyVariables = new[]
             {
                 candidate.ClientFullName,
                 candidate.ProfessionalFullName,
-                candidate.StartsAtUtc.ToString("dd/MM HH:mm"),
+                FormatForWhatsApp(localStartsAt, candidate.LanguageCode),
             };
 
             await _whatsApp
-                .SendReminderAsync(tenantId, candidate.ClientWhatsAppPhone!, idempotencyKey, bodyVariables, cancellationToken)
+                .SendReminderAsync(
+                    tenantId,
+                    candidate.ClientWhatsAppPhone!,
+                    idempotencyKey,
+                    candidate.LanguageCode,
+                    bodyVariables,
+                    cancellationToken)
                 .ConfigureAwait(false);
 
             return true;
@@ -166,6 +178,34 @@ public sealed class SendAppointmentRemindersUseCase
             _logger.LogError(ex, "Falló el recordatorio por WhatsApp del turno {AppointmentId}.", candidate.AppointmentId);
             return false;
         }
+    }
+
+    private static DateTime ConvertToLocal(DateTime startsAtUtc, string timeZoneId)
+    {
+        var utc = startsAtUtc.Kind == DateTimeKind.Utc
+            ? startsAtUtc
+            : DateTime.SpecifyKind(startsAtUtc, DateTimeKind.Utc);
+        return TimeZoneInfo.ConvertTimeFromUtc(utc, TimeZoneInfo.FindSystemTimeZoneById(timeZoneId));
+    }
+
+    private static string FormatForWhatsApp(DateTime localDateTime, string? languageCode) =>
+        languageCode?.StartsWith("en", StringComparison.OrdinalIgnoreCase) == true
+            ? localDateTime.ToString("MM/dd h:mm tt", System.Globalization.CultureInfo.InvariantCulture)
+            : localDateTime.ToString("dd/MM HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string ServiceNameOrDefault(string? serviceName, string? languageCode)
+    {
+        if (!string.IsNullOrWhiteSpace(serviceName))
+        {
+            return serviceName;
+        }
+
+        return languageCode?.Split('-', 2)[0].ToLowerInvariant() switch
+        {
+            "en" => "Appointment",
+            "pt" => "Consulta",
+            _ => "Turno",
+        };
     }
 
     private async Task TryCompleteClaimAsync(

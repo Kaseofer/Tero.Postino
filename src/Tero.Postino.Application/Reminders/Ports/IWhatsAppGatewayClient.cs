@@ -11,6 +11,7 @@ public interface IWhatsAppGatewayClient
         Guid tenantId,
         string to,
         string idempotencyKey,
+        string languageCode,
         IReadOnlyList<string> bodyVariables,
         CancellationToken cancellationToken = default);
 }

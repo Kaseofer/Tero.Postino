@@ -17,4 +17,7 @@ public sealed record MailRequestContext
     public required string CallerClientId { get; init; }
     public required string CorrelationId { get; init; }
     public DateTimeOffset OccurredAtUtc { get; init; } = DateTimeOffset.UtcNow;
+    /// <summary>Zona IANA usada sólo para presentar fechas al destinatario; el instante del
+    /// contrato permanece en UTC.</summary>
+    public string? RecipientTimeZoneId { get; init; }
 }

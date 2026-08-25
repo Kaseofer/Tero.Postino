@@ -62,7 +62,7 @@ public sealed class SendMailUseCase : ISendMailUseCase
             To = notification.RecipientEmail,
             TemplateType = notification.NotificationType.ToString(),
             Language = notification.LanguageCode,
-            TemplateModel = BuildTemplateModel(notification),
+            TemplateModel = BuildTemplateModel(notification, auditContext.RecipientTimeZoneId),
             TenantId = auditContext.TenantId,
             CallerClientId = auditContext.CallerClientId,
             CorrelationId = auditContext.CorrelationId,
@@ -117,11 +117,13 @@ public sealed class SendMailUseCase : ISendMailUseCase
     /// enriquecen con sus datos propios para que el contrato no pierda información antes de
     /// llegar a la plantilla (PO3-DAT-1).
     /// </summary>
-    private static Dictionary<string, object> BuildTemplateModel(MailNotification notification)
+    private static Dictionary<string, object> BuildTemplateModel(
+        MailNotification notification,
+        string? recipientTimeZoneId)
     {
         var model = notification switch
         {
-            AppointmentNotification n => AppointmentModel(n),
+            AppointmentNotification n => AppointmentModel(n, recipientTimeZoneId),
 
             PasswordResetNotification n => new Dictionary<string, object>
             {
@@ -178,13 +180,19 @@ public sealed class SendMailUseCase : ISendMailUseCase
         return builder.Uri.AbsoluteUri;
     }
 
-    private static Dictionary<string, object> AppointmentModel(AppointmentNotification n)
+    private static Dictionary<string, object> AppointmentModel(
+        AppointmentNotification n,
+        string? recipientTimeZoneId)
     {
+        var appointmentDateTime = FormatForRecipient(
+            n.AppointmentDateTime,
+            n.LanguageCode,
+            recipientTimeZoneId);
         var model = new Dictionary<string, object>
         {
             { "contactName", n.RecipientName },
             { "serviceName", n.ServiceName },
-            { "appointmentDateTime", n.AppointmentDateTime },
+            { "appointmentDateTime", appointmentDateTime },
             { "organizationName", ValueOrDefault(n.OrganizationName, "Tero") },
             { "organizationPhone", ValueOrDefault(n.OrganizationPhone) },
             { "organizationWhatsapp", ValueOrDefault(n.OrganizationWhatsApp) },
@@ -216,10 +224,29 @@ public sealed class SendMailUseCase : ISendMailUseCase
 
         if (n is AppointmentRescheduledNotification rescheduled)
         {
-            model["previousAppointmentDateTime"] = rescheduled.PreviousAppointmentDateTime;
+            model["previousAppointmentDateTime"] = FormatForRecipient(
+                rescheduled.PreviousAppointmentDateTime,
+                n.LanguageCode,
+                recipientTimeZoneId);
         }
 
         return model;
+    }
+
+    private static object FormatForRecipient(DateTime value, string? languageCode, string? timeZoneId)
+    {
+        if (string.IsNullOrWhiteSpace(timeZoneId))
+        {
+            return value;
+        }
+
+        var utc = value.Kind == DateTimeKind.Utc
+            ? value
+            : DateTime.SpecifyKind(value, DateTimeKind.Utc);
+        var local = TimeZoneInfo.ConvertTimeFromUtc(utc, TimeZoneInfo.FindSystemTimeZoneById(timeZoneId));
+        return languageCode?.StartsWith("en", StringComparison.OrdinalIgnoreCase) == true
+            ? local.ToString("MM/dd/yyyy h:mm tt", System.Globalization.CultureInfo.InvariantCulture)
+            : local.ToString("dd/MM/yyyy HH:mm", System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private static void AddWhenPresent(Dictionary<string, object> model, string key, string? value)

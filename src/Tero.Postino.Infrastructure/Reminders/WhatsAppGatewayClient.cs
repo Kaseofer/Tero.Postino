@@ -22,11 +22,15 @@ public sealed class WhatsAppGatewayClient : AuthenticatedHttpClientBase, IWhatsA
         Guid tenantId,
         string to,
         string idempotencyKey,
+        string languageCode,
         IReadOnlyList<string> bodyVariables,
         CancellationToken cancellationToken = default)
     {
         var gatewayOptions = _options.Value;
-        var body = new SendWhatsAppMessageWireRequest(to, gatewayOptions.TemplateName, gatewayOptions.LanguageCode, bodyVariables, idempotencyKey);
+        var effectiveLanguage = string.IsNullOrWhiteSpace(languageCode)
+            ? gatewayOptions.LanguageCode
+            : languageCode;
+        var body = new SendWhatsAppMessageWireRequest(to, gatewayOptions.TemplateName, effectiveLanguage, bodyVariables, idempotencyKey);
 
         using var response = await SendAuthenticatedAsync(
                 tenantId,
