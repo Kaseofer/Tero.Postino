@@ -56,8 +56,8 @@ public sealed class NotificationContentTests
 
     [Theory]
     [InlineData("es", "Motivo de la cancelación")]
-    [InlineData("en", "Reason:")]
-    [InlineData("pt", "Motivo:")]
+    [InlineData("en", "Reason for cancellation")]
+    [InlineData("pt", "Motivo do cancelamento")]
     public void Render_Cancelacion_MuestraElMotivoEnCadaIdioma(string language, string label)
     {
         var renderer = CreateRenderer();
@@ -78,8 +78,8 @@ public sealed class NotificationContentTests
 
     [Theory]
     [InlineData("es", "Horario anterior")]
-    [InlineData("en", "Previous time:")]
-    [InlineData("pt", "Horário anterior:")]
+    [InlineData("en", "Previous date and time")]
+    [InlineData("pt", "Data e horário anteriores")]
     public void Render_Reprogramacion_MuestraHorarioAnteriorEnCadaIdioma(string language, string label)
     {
         var renderer = CreateRenderer();
@@ -170,11 +170,14 @@ public sealed class NotificationContentTests
 
             Assert.True(outcome.IsSuccess);
             var message = Assert.IsType<MailMessageDto>(publisher.Message);
-            var html = renderer.Render(message.TemplateType, "es", JsonModel(message.TemplateModel!));
+            foreach (var language in new[] { "es", "en", "pt" })
+            {
+                var html = renderer.Render(message.TemplateType, language, JsonModel(message.TemplateModel!));
 
-            Assert.DoesNotContain("{{", html);
-            Assert.DoesNotContain("::optional:", html);
-            Assert.DoesNotContain("::/optional::", html);
+                Assert.DoesNotContain("{{", html);
+                Assert.DoesNotContain("::optional:", html);
+                Assert.DoesNotContain("::/optional::", html);
+            }
         }
     }
 
