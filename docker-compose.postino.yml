@@ -1,4 +1,3 @@
-version: '3.8'
 services:
   rabbitmq:
     image: rabbitmq:3-management
@@ -15,14 +14,28 @@ services:
     build:
       context: .
       dockerfile: src/Tero.Postino.Api/Dockerfile
+      secrets:
+        - packages_user
+        - packages_token
     depends_on:
       - rabbitmq
     environment:
       - Rabbit__Host=rabbitmq
       - Rabbit__User=guest
       - Rabbit__Password=guest
+      - Smtp__Enabled=false
+      - MailJournal__BasePath=/mails
+    volumes:
+      - postino-mails:/mails
     ports:
       - '8081:80'
 
 volumes:
   rabbitmq-data:
+  postino-mails:
+
+secrets:
+  packages_user:
+    environment: GITHUB_PACKAGES_USER
+  packages_token:
+    environment: GITHUB_PACKAGES_TOKEN

@@ -10,6 +10,10 @@ public sealed class SmtpOptions
 {
     public const string SectionName = "Smtp";
 
+    /// <summary>Permite desactivar explícitamente la entrega en entornos locales. Cuando está
+    /// desactivada, Postino sólo registra metadatos del mensaje en el journal.</summary>
+    public bool Enabled { get; set; } = true;
+
     public string? Host { get; set; }
 
     public int Port { get; set; } = 587;

@@ -26,12 +26,16 @@ builder.Services.AddTeroJwtAuthentication(builder.Configuration);
 // RabbitMQ Configuration
 builder.Services.AddSingleton(sp =>
 {
-    var cfg = builder.Configuration;
+    var options = builder.Configuration
+        .GetSection(RabbitMqOptions.SectionName)
+        .Get<RabbitMqOptions>() ?? new RabbitMqOptions();
     return new ConnectionFactory
     {
-        HostName = cfg["Rabbit:Host"] ?? "localhost",
-        UserName = cfg["Rabbit:User"] ?? "guest",
-        Password = cfg["Rabbit:Password"] ?? "guest",
+        HostName = options.Host,
+        Port = options.Port,
+        UserName = options.User,
+        Password = options.Password,
+        VirtualHost = options.VirtualHost,
         AutomaticRecoveryEnabled = true,
         NetworkRecoveryInterval = TimeSpan.FromSeconds(10)
     };

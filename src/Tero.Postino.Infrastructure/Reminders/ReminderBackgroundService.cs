@@ -67,6 +67,10 @@ public sealed class ReminderBackgroundService : BackgroundService
                     _logger.LogInformation("Recordatorios: {Count} turno(s) procesados para el tenant {TenantId}.", count, tenantId);
                 }
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Falló la corrida de recordatorios del tenant {TenantId}.", tenantId);
