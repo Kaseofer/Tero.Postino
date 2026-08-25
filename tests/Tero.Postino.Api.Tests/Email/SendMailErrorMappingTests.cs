@@ -13,7 +13,7 @@ namespace Tero.Postino.Api.Tests.Email;
 public sealed class SendMailUseCaseTests
 {
     [Fact]
-    public async Task ExecuteAsync_ConEmailInvalido_DevuelveFalloDeValidacion()
+    public async Task ExecuteAsync_WithInvalidEmail_ReturnsValidationFailure()
     {
         var publisher = new StubMailPublisher();
         var useCase = CreateUseCase(publisher);
@@ -27,7 +27,7 @@ public sealed class SendMailUseCaseTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_CuandoRabbitFalla_DevuelveFalloDeInfraestructuraSinFiltrarDetalle()
+    public async Task ExecuteAsync_WhenRabbitMqFails_ReturnsInfrastructureFailureWithoutLeakingDetails()
     {
         var publisher = new StubMailPublisher((_, _) => throw new InvalidOperationException("rabbit-password=secreto"));
         var useCase = CreateUseCase(publisher);
@@ -42,7 +42,7 @@ public sealed class SendMailUseCaseTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_CuandoSeCancela_PropagaLaCancelacion()
+    public async Task ExecuteAsync_WhenCancelled_PropagatesCancellation()
     {
         using var cts = new CancellationTokenSource();
         cts.Cancel();
@@ -83,7 +83,7 @@ public sealed class MailControllerTests
     [Theory]
     [InlineData(SendMailFailureKind.Validation, StatusCodes.Status400BadRequest)]
     [InlineData(SendMailFailureKind.Infrastructure, StatusCodes.Status503ServiceUnavailable)]
-    public async Task Send_MapeaLaCategoriaDeFalloAlStatusHttpCorrecto(
+    public async Task Send_MapsFailureKindToExpectedHttpStatus(
         SendMailFailureKind failureKind,
         int expectedStatus)
     {

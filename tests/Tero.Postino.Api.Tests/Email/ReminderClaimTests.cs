@@ -10,7 +10,7 @@ namespace Tero.Postino.Api.Tests.Email;
 public sealed class ReminderClaimTests
 {
     [Fact]
-    public async Task TodosLosCanalesExitosos_CompletaClaim()
+    public async Task AllRequestedChannelsSucceed_CompletesClaim()
     {
         var appointments = new FakeAppointmentsClient(CreateCandidate(email: true, whatsApp: true));
         var useCase = CreateUseCase(appointments, EmailSuccess(), new FakeWhatsAppClient());
@@ -22,7 +22,7 @@ public sealed class ReminderClaimTests
     }
 
     [Fact]
-    public async Task CanalFalla_LiberaClaim()
+    public async Task RequestedChannelFails_ReleasesClaim()
     {
         var appointments = new FakeAppointmentsClient(CreateCandidate(email: true));
         var useCase = CreateUseCase(appointments, EmailFailure(), new FakeWhatsAppClient());
@@ -34,7 +34,7 @@ public sealed class ReminderClaimTests
     }
 
     [Fact]
-    public async Task CanalSolicitadoSinContacto_LiberaClaim()
+    public async Task RequestedChannelWithoutContact_ReleasesClaim()
     {
         var appointments = new FakeAppointmentsClient(CreateCandidate(whatsApp: true, whatsAppPhone: null));
         var whatsApp = new FakeWhatsAppClient();
@@ -48,7 +48,7 @@ public sealed class ReminderClaimTests
     }
 
     [Fact]
-    public async Task SinCanalesHabilitados_CompletaSinEnviar()
+    public async Task NoChannelsEnabled_CompletesWithoutSending()
     {
         var appointments = new FakeAppointmentsClient(CreateCandidate());
         var email = EmailSuccess();
@@ -64,7 +64,7 @@ public sealed class ReminderClaimTests
     }
 
     [Fact]
-    public async Task CancelacionSolicitada_IntentaLiberarYSePropaga()
+    public async Task CancellationRequested_AttemptsReleaseAndPropagates()
     {
         var appointments = new FakeAppointmentsClient(CreateCandidate(email: true));
         var email = new FakeEmailUseCase((_, token) => Task.FromCanceled<SendMailOutcome>(token));
