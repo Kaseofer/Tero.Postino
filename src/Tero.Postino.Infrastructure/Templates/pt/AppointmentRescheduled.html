@@ -1,12 +1,12 @@
 <!--
-  Ver es/AppointmentBooked.html para el criterio de esta plantilla (compartida por las 4
-  variedades de turno; el asunto vive en un .subject.txt aparte, ver BACKLOG.md #1).
-  Placeholders: {{contactName}} {{serviceName}} {{appointmentDateTime}} {{location}}
-  {{durationMinutes}}.
+  Placeholders: {{contactName}} {{serviceName}} {{appointmentDateTime}}
+  {{previousAppointmentDateTime}} {{location}} {{durationMinutes}}.
 -->
 <div style="font-family: sans-serif; max-width: 480px;">
   <p>Olá {{contactName}},</p>
-  <p style="font-size: 16px;"><strong>{{serviceName}}</strong> — {{appointmentDateTime}}</p>
+  <p>Sua consulta foi reagendada.</p>
+  <p><strong>Horário anterior:</strong> {{previousAppointmentDateTime}}</p>
+  <p style="font-size: 16px;"><strong>Novo horário:</strong> {{serviceName}} — {{appointmentDateTime}}</p>
   ::optional:location::<p><strong>Local:</strong> {{location}}</p>::/optional::
   ::optional:durationMinutes::<p><strong>Duração:</strong> {{durationMinutes}} minutos</p>::/optional::
 </div>

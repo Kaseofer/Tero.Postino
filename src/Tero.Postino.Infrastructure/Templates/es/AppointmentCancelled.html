@@ -1,20 +1,15 @@
 <!--
-  Plantilla compartida por las 4 variedades de turno (booked/cancelled/rescheduled/reminder) —
-  el cuerpo es el mismo a propósito, lo único que distingue una de otra es el asunto (archivo
-  .subject.txt aparte, ver BACKLOG.md #1). Si el día de mañana hace falta un cuerpo distinto
-  por variedad (por ejemplo "tu turno fue cancelado" en el texto), es edición de archivo, no
-  de código: cada MailNotificationType ya busca su propio HTML por convención.
-
   Placeholders: {{contactName}} {{serviceName}} {{appointmentDateTime}} {{location}}
-  {{durationMinutes}}. MailTemplateRenderer los reemplaza por texto plano (HTML-encodeado) —
-  no hay lógica condicional acá salvo ::optional::, que hace desaparecer la fila entera si el
-  dato no vino.
+  {{durationMinutes}} {{cancellationReason}}. MailTemplateRenderer los reemplaza por texto
+  plano (HTML-encodeado); ::optional:: elimina la fila si el motivo no vino.
 
   Editable con doble clic — es HTML común, se ve en cualquier navegador.
 -->
 <div style="font-family: sans-serif; max-width: 480px;">
   <p>Hola {{contactName}},</p>
+  <p>Tu turno fue cancelado.</p>
   <p style="font-size: 16px;"><strong>{{serviceName}}</strong> — {{appointmentDateTime}}</p>
+  ::optional:cancellationReason::<p><strong>Motivo:</strong> {{cancellationReason}}</p>::/optional::
   ::optional:location::<p><strong>Ubicación:</strong> {{location}}</p>::/optional::
   ::optional:durationMinutes::<p><strong>Duración:</strong> {{durationMinutes}} minutos</p>::/optional::
 </div>
