@@ -112,3 +112,13 @@ de entorno `GITHUB_PACKAGES_USER` y `GITHUB_PACKAGES_TOKEN` (ver `nuget.config`)
 
 Las credenciales de SMTP y de RabbitMQ van por user-secrets o variables de entorno, nunca en
 `appsettings.json`.
+
+El `docker-compose.postino.yml` levanta sólo Postino y RabbitMQ. Para construir la imagen lee
+`GITHUB_PACKAGES_USER` y `GITHUB_PACKAGES_TOKEN` como secretos de BuildKit. El volumen
+`postino-mails` conserva los metadatos del journal cuando se recrea el contenedor.
+
+La configuración incluida usa `Smtp__Enabled=false`: es un modo local explícito que procesa el
+mensaje sin entregarlo y registra únicamente metadatos seguros. Para enviar realmente hay que
+definir `Smtp__Enabled=true`, `Smtp__Host`, `Smtp__FromAddress` y las credenciales necesarias.
+Las opciones de RabbitMQ usan la sección `Rabbit` (`Rabbit__Host`, `Rabbit__Port`,
+`Rabbit__User`, `Rabbit__Password` y `Rabbit__VirtualHost`).

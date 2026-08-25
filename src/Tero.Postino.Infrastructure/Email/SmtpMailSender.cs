@@ -45,15 +45,22 @@ public sealed class SmtpMailSender
     {
         var smtp = _options.Value;
 
-        if (string.IsNullOrEmpty(smtp.Host) || string.IsNullOrEmpty(smtp.FromAddress))
+        if (!smtp.Enabled)
         {
             _logger.LogWarning(
-                "Smtp:Host o Smtp:FromAddress sin configurar — no se envía el mensaje {MessageId} a {RecipientHash}.",
+                "SMTP está deshabilitado — no se envía el mensaje {MessageId} a {RecipientHash}.",
                 messageId,
                 MailJournalWriter.HashRecipient(to));
-            await _journal.WriteAsync(messageId, templateType, language, to, pending: true, failureCode: "smtp_not_configured")
+            await _journal.WriteAsync(messageId, templateType, language, to, pending: true, failureCode: "smtp_disabled")
                 .ConfigureAwait(false);
             return;
+        }
+
+        if (string.IsNullOrWhiteSpace(smtp.Host) || string.IsNullOrWhiteSpace(smtp.FromAddress))
+        {
+            await _journal.WriteAsync(messageId, templateType, language, to, pending: true, failureCode: "smtp_configuration_invalid")
+                .ConfigureAwait(false);
+            throw new InvalidOperationException("SMTP está habilitado pero faltan Smtp:Host o Smtp:FromAddress.");
         }
 
         using var message = new MailMessage(new MailAddress(smtp.FromAddress, smtp.FromName ?? string.Empty), new MailAddress(to))
