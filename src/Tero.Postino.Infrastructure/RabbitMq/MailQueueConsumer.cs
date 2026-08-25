@@ -57,7 +57,10 @@ public sealed class MailQueueConsumer : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await using var connection = await _connectionFactory.CreateConnectionAsync(stoppingToken).ConfigureAwait(false);
-        await using var channel = await connection.CreateChannelAsync(cancellationToken: stoppingToken).ConfigureAwait(false);
+        await using var channel = await connection.CreateChannelAsync(
+                RabbitMqChannelOptions.CreatePublisherConfirmed(),
+                stoppingToken)
+            .ConfigureAwait(false);
 
         await channel.ExchangeDeclareAsync(ExchangeName, ExchangeType.Direct, durable: true, autoDelete: false, cancellationToken: stoppingToken)
             .ConfigureAwait(false);
@@ -135,6 +138,10 @@ public sealed class MailQueueConsumer : BackgroundService
                 .ConfigureAwait(false);
             await channel.BasicAckAsync(args.DeliveryTag, false, stoppingToken).ConfigureAwait(false);
         }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             var retryCount = GetRetryCount(args.BasicProperties);
@@ -150,8 +157,16 @@ public sealed class MailQueueConsumer : BackgroundService
                     safeMessageId, nextAttempt, MaxRetries, backoff);
 
                 await Task.Delay(backoff, stoppingToken).ConfigureAwait(false);
-                await RepublishAsync(channel, ExchangeName, RoutingKey, args.Body, nextAttempt, headers: null, stoppingToken)
-                    .ConfigureAwait(false);
+                try
+                {
+                    await RepublishAsync(channel, ExchangeName, RoutingKey, args.Body, nextAttempt, headers: null, stoppingToken)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception publishException) when (!stoppingToken.IsCancellationRequested)
+                {
+                    await RequeueOriginalAsync(channel, args, safeMessageId, publishException, stoppingToken).ConfigureAwait(false);
+                    return;
+                }
             }
             else
             {
@@ -189,8 +204,16 @@ public sealed class MailQueueConsumer : BackgroundService
                         FailedAtUtc = DateTime.UtcNow,
                     },
                     SerializerOptions);
-                await RepublishAsync(channel, ExchangeName, DeadRoutingKey, deadLetterBody, retryCount, deadHeaders, stoppingToken)
-                    .ConfigureAwait(false);
+                try
+                {
+                    await RepublishAsync(channel, ExchangeName, DeadRoutingKey, deadLetterBody, retryCount, deadHeaders, stoppingToken)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception publishException) when (!stoppingToken.IsCancellationRequested)
+                {
+                    await RequeueOriginalAsync(channel, args, safeMessageId, publishException, stoppingToken).ConfigureAwait(false);
+                    return;
+                }
             }
 
             await channel.BasicAckAsync(args.DeliveryTag, false, stoppingToken).ConfigureAwait(false);
@@ -219,7 +242,32 @@ public sealed class MailQueueConsumer : BackgroundService
         };
 
         var bytes = body.ToArray();
-        await channel.BasicPublishAsync(exchange, routingKey, mandatory: false, basicProperties: props, body: bytes, cancellationToken)
+        using var publishCancellation = RabbitMqChannelOptions.CreatePublishCancellation(cancellationToken);
+        // El canal usa confirms rastreados: el original sólo se ackea después de que este
+        // await recibe confirmación positiva. mandatory:true falla si no existe un binding.
+        await channel.BasicPublishAsync(
+                exchange,
+                routingKey,
+                mandatory: true,
+                basicProperties: props,
+                body: bytes,
+                publishCancellation.Token)
+            .ConfigureAwait(false);
+    }
+
+    private async Task RequeueOriginalAsync(
+        IChannel channel,
+        BasicDeliverEventArgs args,
+        string messageId,
+        Exception exception,
+        CancellationToken cancellationToken)
+    {
+        _logger.LogError(
+            exception,
+            "No se confirmó la republicación de {MessageId}; el mensaje original vuelve a {Queue}.",
+            messageId,
+            QueueName);
+        await channel.BasicNackAsync(args.DeliveryTag, multiple: false, requeue: true, cancellationToken)
             .ConfigureAwait(false);
     }
 

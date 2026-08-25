@@ -30,7 +30,10 @@ public sealed class MailPublisher : IMailPublisher
         try
         {
             await using var conn = await _factory.CreateConnectionAsync(cancellationToken).ConfigureAwait(false);
-            await using var ch = await conn.CreateChannelAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+            await using var ch = await conn.CreateChannelAsync(
+                    RabbitMqChannelOptions.CreatePublisherConfirmed(),
+                    cancellationToken)
+                .ConfigureAwait(false);
 
             // Declarar exchange y queue duraderas
             await ch.ExchangeDeclareAsync(ExchangeName, ExchangeType.Direct, durable: true, autoDelete: false,
@@ -53,13 +56,20 @@ public sealed class MailPublisher : IMailPublisher
                 MessageId = message.MessageId
             };
 
+            // Con confirms rastreados, este await sólo completa después del ack del broker.
+            // mandatory:true convierte también un mensaje no enrutable en PublishException.
+            using var publishCancellation = RabbitMqChannelOptions.CreatePublishCancellation(cancellationToken);
             await ch.BasicPublishAsync(
                 exchange: ExchangeName,
                 routingKey: RoutingKey,
-                mandatory: false,
+                mandatory: true,
                 basicProperties: props,
                 body: bytes,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
+                cancellationToken: publishCancellation.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
