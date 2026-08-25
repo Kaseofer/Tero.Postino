@@ -38,6 +38,9 @@ public sealed class MailTemplateRenderer
     private const string HtmlExtension = "html";
     private const string SubjectExtension = "subject.txt";
 
+    private static readonly HashSet<string> KnownTemplateTypes =
+        Enum.GetNames<MailNotificationType>().ToHashSet(StringComparer.Ordinal);
+
     // ISO 639-1 de dos letras, opcionalmente con región ("es" o "es-AR") — alcanza para lo que
     // hoy se siembra (es/pt/en) y cierra la puerta a que un languageCode tipo "../.." termine
     // compuesto en una ruta de archivo (BACKLOG.md #6).
@@ -197,6 +200,14 @@ public sealed class MailTemplateRenderer
     {
         if (string.IsNullOrWhiteSpace(templateType))
         {
+            return null;
+        }
+
+        if (!KnownTemplateTypes.Contains(templateType))
+        {
+            _logger.LogWarning(
+                "TemplateType '{TemplateType}' no pertenece a la lista de notificaciones soportadas.",
+                templateType);
             return null;
         }
 
