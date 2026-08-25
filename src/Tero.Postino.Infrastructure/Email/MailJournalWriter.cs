@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -5,25 +6,18 @@ using Microsoft.Extensions.Options;
 namespace Tero.Postino.Infrastructure.Email;
 
 /// <summary>
-/// Bitácora en disco de todos los mails que Postino procesa — pedido explícito para poder
-/// revisarlos sin depender de un proveedor SMTP real configurado (hoy no hay ninguno en los
-/// ambientes locales/dev). Dos carpetas, mismo contenido por mensaje:
-///
-/// <list type="bullet">
-///   <item><c>{BasePath}/{yyyy}/{MM}/{yyyyMMdd_HHmmss}_{to}.txt</c> — TODO mail que pasó por
-///   acá, se haya podido mandar de verdad o no.</item>
-///   <item><c>{BasePath}/pendientes/{yyyyMMdd_HHmmss}_{to}.txt</c> — sólo copia de los que NO
-///   se mandaron de verdad (sin SMTP configurado, o agotaron reintentos y fueron a
-///   dead-letter) — para poder revisarlos/reenviarlos a mano más tarde.</item>
-/// </list>
-///
-/// No lanza si falla la escritura a disco (permisos, mount no montado): un problema de
-/// bitácora no puede tirar abajo el envío real de un mail.
+/// Bitácora de auditoría con metadatos mínimos. No persiste destinatarios, asuntos, cuerpos,
+/// modelos de plantilla ni mensajes de excepción porque pueden contener datos personales,
+/// códigos de verificación o enlaces de acceso.
 /// </summary>
 public sealed class MailJournalWriter
 {
+    private static readonly TimeSpan CleanupInterval = TimeSpan.FromHours(24);
+
     private readonly MailJournalOptions _options;
     private readonly ILogger<MailJournalWriter> _logger;
+    private readonly object _cleanupLock = new();
+    private DateTime _nextCleanupAtUtc = DateTime.MinValue;
 
     public MailJournalWriter(IOptions<MailJournalOptions> options, ILogger<MailJournalWriter> logger)
     {
@@ -31,20 +25,53 @@ public sealed class MailJournalWriter
         _logger = logger;
     }
 
-    public Task WriteAsync(string to, string subject, string htmlBody, string? plainTextBody, bool pending, string? pendingReason = null)
+    public Task WriteAsync(
+        string? messageId,
+        string? templateType,
+        string? language,
+        string to,
+        bool pending,
+        string? failureCode = null)
     {
         var now = DateTime.UtcNow;
-        var fileName = $"{now:yyyyMMdd_HHmmss}_{SanitizeForFileName(to)}.txt";
-        var content = BuildContent(to, subject, htmlBody, plainTextBody, now, pendingReason);
+        var safeMessageId = NormalizeMessageId(messageId);
+        var fileName = $"{now:yyyyMMdd_HHmmss_fff}_{safeMessageId}.txt";
+        var content = BuildContent(safeMessageId, templateType, language, to, pending, failureCode, now);
 
         WriteFile(Path.Combine(_options.BasePath, now.ToString("yyyy"), now.ToString("MM")), fileName, content);
-
-        if (pending)
-        {
-            WriteFile(Path.Combine(_options.BasePath, "pendientes"), fileName, content);
-        }
+        CleanupExpiredFiles(now);
 
         return Task.CompletedTask;
+    }
+
+    public static string HashRecipient(string recipient)
+    {
+        var normalized = recipient.Trim().ToLowerInvariant();
+        return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(normalized)));
+    }
+
+    public static string NormalizeMessageId(string? messageId)
+    {
+        if (Guid.TryParse(messageId, out var id))
+        {
+            return id.ToString("N");
+        }
+
+        return string.IsNullOrWhiteSpace(messageId)
+            ? Guid.NewGuid().ToString("N")
+            : Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(messageId)))[..32];
+    }
+
+    public static string NormalizeIdentifier(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)
+            || value.Length > 64
+            || value.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not '.' and not '_' and not '-'))
+        {
+            return "unknown";
+        }
+
+        return value;
     }
 
     private void WriteFile(string directory, string fileName, string content)
@@ -52,7 +79,9 @@ public sealed class MailJournalWriter
         try
         {
             Directory.CreateDirectory(directory);
-            File.WriteAllText(Path.Combine(directory, fileName), content, Encoding.UTF8);
+            var path = Path.Combine(directory, fileName);
+            File.WriteAllText(path, content, Encoding.UTF8);
+            SetRestrictedPermissions(directory, path);
         }
         catch (Exception ex)
         {
@@ -60,34 +89,79 @@ public sealed class MailJournalWriter
         }
     }
 
-    private static string BuildContent(string to, string subject, string htmlBody, string? plainTextBody, DateTime atUtc, string? pendingReason)
+    private void CleanupExpiredFiles(DateTime nowUtc)
+    {
+        if (_options.RetentionDays <= 0)
+        {
+            return;
+        }
+
+        lock (_cleanupLock)
+        {
+            if (nowUtc < _nextCleanupAtUtc)
+            {
+                return;
+            }
+
+            _nextCleanupAtUtc = nowUtc.Add(CleanupInterval);
+        }
+
+        try
+        {
+            if (!Directory.Exists(_options.BasePath))
+            {
+                return;
+            }
+
+            var expiresBefore = nowUtc.AddDays(-_options.RetentionDays);
+            foreach (var path in Directory.EnumerateFiles(_options.BasePath, "*.txt", SearchOption.AllDirectories))
+            {
+                if (File.GetLastWriteTimeUtc(path) < expiresBefore)
+                {
+                    File.Delete(path);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "No se pudo aplicar la retención de la bitácora de mail en {BasePath}.", _options.BasePath);
+        }
+    }
+
+    private static string BuildContent(
+        string safeMessageId,
+        string? templateType,
+        string? language,
+        string to,
+        bool pending,
+        string? failureCode,
+        DateTime atUtc)
     {
         var sb = new StringBuilder();
-        sb.AppendLine($"Fecha (UTC): {atUtc:yyyy-MM-dd HH:mm:ss}");
-        sb.AppendLine($"Para: {to}");
-        sb.AppendLine($"Asunto: {subject}");
-        if (pendingReason is not null)
+        sb.AppendLine($"Fecha (UTC): {atUtc:yyyy-MM-dd HH:mm:ss.fff}");
+        sb.AppendLine($"MessageId: {safeMessageId}");
+        sb.AppendLine($"Tipo: {NormalizeIdentifier(templateType)}");
+        sb.AppendLine($"Idioma: {NormalizeIdentifier(language)}");
+        sb.AppendLine($"RecipientHash: {HashRecipient(to)}");
+        sb.AppendLine($"Estado: {(pending ? "pending" : "sent")}");
+        if (!string.IsNullOrWhiteSpace(failureCode))
         {
-            sb.AppendLine($"Motivo (no enviado): {pendingReason}");
+            sb.AppendLine($"FailureCode: {NormalizeIdentifier(failureCode)}");
         }
-        sb.AppendLine();
-        if (!string.IsNullOrEmpty(plainTextBody))
-        {
-            sb.AppendLine("--- Texto plano ---");
-            sb.AppendLine(plainTextBody);
-            sb.AppendLine();
-        }
-        sb.AppendLine("--- HTML ---");
-        sb.AppendLine(htmlBody);
+
         return sb.ToString();
     }
 
-    /// <summary>El email en sí no trae caracteres inválidos en un path, pero por las dudas
-    /// (y para Windows, que además prohíbe ':') se reemplaza cualquiera de la lista negra.</summary>
-    private static string SanitizeForFileName(string value)
+    private static void SetRestrictedPermissions(string directory, string path)
     {
-        var invalid = Path.GetInvalidFileNameChars();
-        var chars = value.Select(c => invalid.Contains(c) ? '_' : c).ToArray();
-        return new string(chars);
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        File.SetUnixFileMode(
+            directory,
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
     }
 }
