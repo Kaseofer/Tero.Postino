@@ -11,4 +11,18 @@ public sealed record SendMailOutcome
     public required string Message { get; init; }
 
     public List<string> Errors { get; init; } = [];
+
+    /// <summary>
+    /// Permite que la frontera HTTP diferencie un request inválido de una indisponibilidad
+    /// transitoria de RabbitMQ. Antes ambos caminos terminaban como 400 y los callers no
+    /// tenían forma de decidir si correspondía reintentar.
+    /// </summary>
+    public SendMailFailureKind FailureKind { get; init; }
+}
+
+public enum SendMailFailureKind
+{
+    None = 0,
+    Validation = 1,
+    Infrastructure = 2,
 }

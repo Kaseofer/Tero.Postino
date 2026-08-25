@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Tero.Contracts.Mail.Requests;
 using Tero.Postino.Application.Email.Ports;
 
@@ -20,10 +21,12 @@ namespace Tero.Postino.Application.Email.UseCases;
 public sealed class SendMailUseCase : ISendMailUseCase
 {
     private readonly IMailPublisher _mailPublisher;
+    private readonly ILogger<SendMailUseCase> _logger;
 
-    public SendMailUseCase(IMailPublisher mailPublisher)
+    public SendMailUseCase(IMailPublisher mailPublisher, ILogger<SendMailUseCase> logger)
     {
         _mailPublisher = mailPublisher ?? throw new ArgumentNullException(nameof(mailPublisher));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     public async Task<SendMailOutcome> ExecuteAsync(MailNotification notification, CancellationToken cancellationToken = default)
@@ -37,6 +40,7 @@ public sealed class SendMailUseCase : ISendMailUseCase
                 IsSuccess = false,
                 Message = "La solicitud contiene errores de validación",
                 Errors = errors,
+                FailureKind = SendMailFailureKind.Validation,
             };
         }
 
@@ -61,16 +65,32 @@ public sealed class SendMailUseCase : ISendMailUseCase
                 IsSuccess = true,
                 Message = "Correo encolado exitosamente para envío",
                 Errors = [],
+                FailureKind = SendMailFailureKind.None,
             };
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Cancelar la request no es un fallo de dominio ni de RabbitMQ: se propaga para
+            // que ASP.NET finalice la operación con la semántica normal de cancelación.
+            throw;
         }
         catch (Exception ex)
         {
+            _logger.LogError(
+                ex,
+                "No se pudo encolar el mail {MessageId} de tipo {NotificationType}.",
+                messageId,
+                notification.NotificationType);
+
             return new SendMailOutcome
             {
                 MailJobId = messageId,
                 IsSuccess = false,
-                Message = $"Error al encolar el correo: {ex.Message}",
-                Errors = [ex.Message],
+                // No exponer detalles internos del broker al caller; el diagnóstico completo
+                // queda en el log estructurado junto al MessageId.
+                Message = "El servicio de correo no está disponible temporalmente",
+                Errors = [],
+                FailureKind = SendMailFailureKind.Infrastructure,
             };
         }
     }
