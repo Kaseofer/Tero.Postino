@@ -49,12 +49,7 @@ public sealed class MailPublisher : IMailPublisher
 
             // Persistent: el mensaje sobrevive a un reinicio del broker. Sin esto, un mail
             // encolado se pierde antes de entregarse y nadie se entera.
-            var props = new BasicProperties
-            {
-                Persistent = true,
-                ContentType = "application/json",
-                MessageId = message.MessageId
-            };
+            var props = CreateBasicProperties(message);
 
             // Con confirms rastreados, este await sólo completa después del ack del broker.
             // mandatory:true convierte también un mensaje no enrutable en PublishException.
@@ -77,4 +72,19 @@ public sealed class MailPublisher : IMailPublisher
             throw new InvalidOperationException($"Error publishing mail message {message.MessageId}", ex);
         }
     }
+
+    public static BasicProperties CreateBasicProperties(MailMessageDto message) => new()
+    {
+        Persistent = true,
+        ContentType = "application/json",
+        MessageId = message.MessageId,
+        CorrelationId = message.CorrelationId,
+        Headers = new Dictionary<string, object?>
+        {
+            ["x-tenant-id"] = message.TenantId ?? "unknown",
+            ["x-caller-client-id"] = message.CallerClientId,
+            ["x-notification-type"] = message.TemplateType ?? "unknown",
+            ["x-occurred-at-utc"] = message.OccurredAtUtc.ToString("O"),
+        },
+    };
 }

@@ -13,12 +13,16 @@ public sealed class ReminderClaimTests
     public async Task AllRequestedChannelsSucceed_CompletesClaim()
     {
         var appointments = new FakeAppointmentsClient(CreateCandidate(email: true, whatsApp: true));
-        var useCase = CreateUseCase(appointments, EmailSuccess(), new FakeWhatsAppClient());
+        var email = EmailSuccess();
+        var tenantId = Guid.NewGuid();
+        var useCase = CreateUseCase(appointments, email, new FakeWhatsAppClient());
 
-        await useCase.ExecuteForTenantAsync(Guid.NewGuid(), 24);
+        await useCase.ExecuteForTenantAsync(tenantId, 24);
 
         Assert.Equal(1, appointments.CompletedCount);
         Assert.Equal(0, appointments.ReleasedCount);
+        Assert.Equal(tenantId.ToString("D"), email.RequestContext!.TenantId);
+        Assert.Equal("postino-reminder-worker", email.RequestContext.CallerClientId);
     }
 
     [Fact]
@@ -155,12 +159,15 @@ public sealed class ReminderClaimTests
         Func<MailNotification, CancellationToken, Task<SendMailOutcome>> send) : ISendMailUseCase
     {
         public int SendCount { get; private set; }
+        public MailRequestContext? RequestContext { get; private set; }
 
         public Task<SendMailOutcome> ExecuteAsync(
             MailNotification notification,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            MailRequestContext? requestContext = null)
         {
             SendCount++;
+            RequestContext = requestContext;
             return send(notification, cancellationToken);
         }
     }

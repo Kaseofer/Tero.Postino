@@ -71,7 +71,7 @@ public sealed class SendAppointmentRemindersUseCase
             }
             else
             {
-                allRequestedChannelsSucceeded &= await TrySendEmailAsync(candidate, cancellationToken).ConfigureAwait(false);
+                allRequestedChannelsSucceeded &= await TrySendEmailAsync(tenantId, candidate, cancellationToken).ConfigureAwait(false);
             }
         }
 
@@ -98,7 +98,7 @@ public sealed class SendAppointmentRemindersUseCase
         }
     }
 
-    private async Task<bool> TrySendEmailAsync(ReminderCandidate candidate, CancellationToken cancellationToken)
+    private async Task<bool> TrySendEmailAsync(Guid tenantId, ReminderCandidate candidate, CancellationToken cancellationToken)
     {
         try
         {
@@ -110,7 +110,14 @@ public sealed class SendAppointmentRemindersUseCase
                 ServiceName = candidate.ProfessionalFullName,
             };
 
-            var outcome = await _email.ExecuteAsync(notification, cancellationToken).ConfigureAwait(false);
+            var requestContext = new MailRequestContext
+            {
+                TenantId = tenantId.ToString("D"),
+                CallerClientId = "postino-reminder-worker",
+                CorrelationId = $"reminder-{candidate.AppointmentId:N}",
+                OccurredAtUtc = DateTimeOffset.UtcNow,
+            };
+            var outcome = await _email.ExecuteAsync(notification, cancellationToken, requestContext).ConfigureAwait(false);
             if (!outcome.IsSuccess)
             {
                 _logger.LogWarning(

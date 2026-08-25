@@ -54,6 +54,29 @@ public sealed class NotificationContentTests
             publisher.Message!.TemplateModel!["previousAppointmentDateTime"]);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_WithAuditContext_PropagatesTraceabilityMetadata()
+    {
+        var publisher = new CapturingPublisher();
+        var useCase = CreateUseCase(publisher);
+        var occurredAt = DateTimeOffset.UtcNow.AddMinutes(-1);
+        var context = new MailRequestContext
+        {
+            TenantId = Guid.NewGuid().ToString("D"),
+            CallerClientId = Guid.NewGuid().ToString("D"),
+            CorrelationId = "correlation-123",
+            OccurredAtUtc = occurredAt,
+        };
+
+        var outcome = await useCase.ExecuteAsync(CreatePasswordReset(), requestContext: context);
+
+        Assert.True(outcome.IsSuccess);
+        Assert.Equal(context.TenantId, publisher.Message!.TenantId);
+        Assert.Equal(context.CallerClientId, publisher.Message.CallerClientId);
+        Assert.Equal(context.CorrelationId, publisher.Message.CorrelationId);
+        Assert.Equal(occurredAt, publisher.Message.OccurredAtUtc);
+    }
+
     [Theory]
     [InlineData("es", "Motivo de la cancelación")]
     [InlineData("en", "Reason for cancellation")]

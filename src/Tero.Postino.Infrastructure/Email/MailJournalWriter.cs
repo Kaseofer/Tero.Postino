@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Tero.Postino.Application.Email.Ports;
 
 namespace Tero.Postino.Infrastructure.Email;
 
@@ -31,12 +32,13 @@ public sealed class MailJournalWriter
         string? language,
         string to,
         bool pending,
-        string? failureCode = null)
+        string? failureCode = null,
+        MailRequestContext? requestContext = null)
     {
         var now = DateTime.UtcNow;
         var safeMessageId = NormalizeMessageId(messageId);
         var fileName = $"{now:yyyyMMdd_HHmmss_fff}_{safeMessageId}.txt";
-        var content = BuildContent(safeMessageId, templateType, language, to, pending, failureCode, now);
+        var content = BuildContent(safeMessageId, templateType, language, to, pending, failureCode, requestContext, now);
 
         WriteFile(Path.Combine(_options.BasePath, now.ToString("yyyy"), now.ToString("MM")), fileName, content);
         CleanupExpiredFiles(now);
@@ -135,6 +137,7 @@ public sealed class MailJournalWriter
         string to,
         bool pending,
         string? failureCode,
+        MailRequestContext? requestContext,
         DateTime atUtc)
     {
         var sb = new StringBuilder();
@@ -142,6 +145,10 @@ public sealed class MailJournalWriter
         sb.AppendLine($"MessageId: {safeMessageId}");
         sb.AppendLine($"Tipo: {NormalizeIdentifier(templateType)}");
         sb.AppendLine($"Idioma: {NormalizeIdentifier(language)}");
+        sb.AppendLine($"TenantId: {NormalizeIdentifier(requestContext?.TenantId)}");
+        sb.AppendLine($"CallerClientId: {NormalizeIdentifier(requestContext?.CallerClientId)}");
+        sb.AppendLine($"CorrelationId: {NormalizeIdentifier(requestContext?.CorrelationId)}");
+        sb.AppendLine($"OccurredAtUtc: {(requestContext?.OccurredAtUtc ?? atUtc):O}");
         sb.AppendLine($"RecipientHash: {HashRecipient(to)}");
         sb.AppendLine($"Estado: {(pending ? "pending" : "sent")}");
         if (!string.IsNullOrWhiteSpace(failureCode))

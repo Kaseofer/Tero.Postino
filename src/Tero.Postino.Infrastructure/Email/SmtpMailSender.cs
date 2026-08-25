@@ -3,6 +3,7 @@ using System.Net.Mail;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tero.Postino.Infrastructure.Configuration;
+using Tero.Postino.Application.Email.Ports;
 
 namespace Tero.Postino.Infrastructure.Email;
 
@@ -41,6 +42,7 @@ public sealed class SmtpMailSender
         string subject,
         string htmlBody,
         string? plainTextBody = null,
+        MailRequestContext? requestContext = null,
         CancellationToken cancellationToken = default)
     {
         var smtp = _options.Value;
@@ -51,14 +53,14 @@ public sealed class SmtpMailSender
                 "SMTP está deshabilitado — no se envía el mensaje {MessageId} a {RecipientHash}.",
                 messageId,
                 MailJournalWriter.HashRecipient(to));
-            await _journal.WriteAsync(messageId, templateType, language, to, pending: true, failureCode: "smtp_disabled")
+            await _journal.WriteAsync(messageId, templateType, language, to, pending: true, failureCode: "smtp_disabled", requestContext)
                 .ConfigureAwait(false);
             return;
         }
 
         if (string.IsNullOrWhiteSpace(smtp.Host) || string.IsNullOrWhiteSpace(smtp.FromAddress))
         {
-            await _journal.WriteAsync(messageId, templateType, language, to, pending: true, failureCode: "smtp_configuration_invalid")
+            await _journal.WriteAsync(messageId, templateType, language, to, pending: true, failureCode: "smtp_configuration_invalid", requestContext)
                 .ConfigureAwait(false);
             throw new InvalidOperationException("SMTP está habilitado pero faltan Smtp:Host o Smtp:FromAddress.");
         }
@@ -95,6 +97,6 @@ public sealed class SmtpMailSender
             "Mail {MessageId} enviado a {RecipientHash}.",
             messageId,
             MailJournalWriter.HashRecipient(to));
-        await _journal.WriteAsync(messageId, templateType, language, to, pending: false).ConfigureAwait(false);
+        await _journal.WriteAsync(messageId, templateType, language, to, pending: false, requestContext: requestContext).ConfigureAwait(false);
     }
 }

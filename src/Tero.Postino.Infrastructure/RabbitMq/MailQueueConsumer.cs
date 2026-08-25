@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using Tero.Postino.Infrastructure.Email;
+using Tero.Postino.Application.Email.Ports;
 
 namespace Tero.Postino.Infrastructure.RabbitMq;
 
@@ -105,6 +106,20 @@ public sealed class MailQueueConsumer : BackgroundService
         }
 
         var safeMessageId = MailJournalWriter.NormalizeMessageId(message.MessageId);
+        var requestContext = new MailRequestContext
+        {
+            TenantId = MailJournalWriter.NormalizeIdentifier(message.TenantId),
+            CallerClientId = MailJournalWriter.NormalizeIdentifier(message.CallerClientId),
+            CorrelationId = MailJournalWriter.NormalizeIdentifier(message.CorrelationId),
+            OccurredAtUtc = message.OccurredAtUtc == default ? DateTimeOffset.UtcNow : message.OccurredAtUtc,
+        };
+        using var auditScope = _logger.BeginScope(new Dictionary<string, object?>
+        {
+            ["TenantId"] = requestContext.TenantId,
+            ["CallerClientId"] = requestContext.CallerClientId,
+            ["CorrelationId"] = requestContext.CorrelationId,
+            ["NotificationType"] = MailJournalWriter.NormalizeIdentifier(message.TemplateType),
+        });
 
         try
         {
@@ -134,6 +149,7 @@ public sealed class MailQueueConsumer : BackgroundService
                     subject,
                     htmlBody,
                     plainTextBody,
+                    requestContext,
                     stoppingToken)
                 .ConfigureAwait(false);
             await channel.BasicAckAsync(args.DeliveryTag, false, stoppingToken).ConfigureAwait(false);
@@ -185,7 +201,8 @@ public sealed class MailQueueConsumer : BackgroundService
                         message.Language,
                         message.To,
                         pending: true,
-                        failureCode: failureCode)
+                        failureCode: failureCode,
+                        requestContext)
                     .ConfigureAwait(false);
 
                 var deadHeaders = new Dictionary<string, object?>
@@ -199,6 +216,10 @@ public sealed class MailQueueConsumer : BackgroundService
                         MessageId = safeMessageId,
                         TemplateType = MailJournalWriter.NormalizeIdentifier(message.TemplateType),
                         Language = MailJournalWriter.NormalizeIdentifier(message.Language),
+                        TenantId = requestContext.TenantId,
+                        CallerClientId = requestContext.CallerClientId,
+                        CorrelationId = requestContext.CorrelationId,
+                        OccurredAtUtc = requestContext.OccurredAtUtc,
                         RecipientHash = MailJournalWriter.HashRecipient(message.To),
                         FailureCode = failureCode,
                         FailedAtUtc = DateTime.UtcNow,
@@ -299,6 +320,10 @@ public sealed class MailQueueConsumer : BackgroundService
         public string? PlainTextBody { get; set; }
         public string? TemplateType { get; set; }
         public string? Language { get; set; }
+        public string? TenantId { get; set; }
+        public string? CallerClientId { get; set; }
+        public string? CorrelationId { get; set; }
+        public DateTimeOffset OccurredAtUtc { get; set; }
         public Dictionary<string, JsonElement>? TemplateModel { get; set; }
     }
 
@@ -307,6 +332,10 @@ public sealed class MailQueueConsumer : BackgroundService
         public string? MessageId { get; set; }
         public string? TemplateType { get; set; }
         public string? Language { get; set; }
+        public string? TenantId { get; set; }
+        public string CallerClientId { get; set; } = "";
+        public string CorrelationId { get; set; } = "";
+        public DateTimeOffset OccurredAtUtc { get; set; }
         public string RecipientHash { get; set; } = "";
         public string FailureCode { get; set; } = "";
         public DateTime FailedAtUtc { get; set; }

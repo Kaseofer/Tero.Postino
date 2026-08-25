@@ -7,6 +7,7 @@ using Tero.Postino.Application.Email;
 using Tero.Postino.Application.Email.Ports;
 using Tero.Postino.Application.Email.UseCases;
 using Tero.Postino.Controllers;
+using Tero.ServiceDefaults.CorrelationId;
 
 namespace Tero.Postino.Api.Tests.Email;
 
@@ -80,6 +81,37 @@ public sealed class SendMailUseCaseTests
 
 public sealed class MailControllerTests
 {
+    [Fact]
+    public async Task Send_WithoutTenantIdentity_ReturnsForbiddenWithoutDispatching()
+    {
+        var httpContext = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(
+                [new Claim("client_id", Guid.NewGuid().ToString())],
+                authenticationType: "test")),
+        };
+        var stub = new StubSendMailUseCase(new SendMailOutcome
+        {
+            MailJobId = "unused",
+            IsSuccess = true,
+            Message = "unused",
+        });
+        var controller = new MailController(
+            stub,
+            new CorrelationIdContext(
+                new HttpContextAccessor { HttpContext = httpContext },
+                new CorrelationIdOptions()))
+        {
+            ControllerContext = new ControllerContext { HttpContext = httpContext },
+        };
+
+        var result = await controller.Send(SendMailUseCaseTests.CreateNotification(), CancellationToken.None);
+
+        var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
+        Assert.Null(stub.RequestContext);
+    }
+
     [Theory]
     [InlineData(SendMailFailureKind.Validation, StatusCodes.Status400BadRequest)]
     [InlineData(SendMailFailureKind.Infrastructure, StatusCodes.Status503ServiceUnavailable)]
@@ -95,16 +127,27 @@ public sealed class MailControllerTests
             Errors = [],
             FailureKind = failureKind,
         };
-        var controller = new MailController(new StubSendMailUseCase(outcome))
+        var callerId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        var httpContext = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(
+                [
+                    new Claim("client_id", callerId.ToString()),
+                    new Claim("tenant_id", tenantId.ToString()),
+                ],
+                authenticationType: "test")),
+        };
+        httpContext.Items["CorrelationId"] = "correlation-123";
+        var stub = new StubSendMailUseCase(outcome);
+        var correlationContext = new CorrelationIdContext(
+            new HttpContextAccessor { HttpContext = httpContext },
+            new CorrelationIdOptions());
+        var controller = new MailController(stub, correlationContext)
         {
             ControllerContext = new ControllerContext
             {
-                HttpContext = new DefaultHttpContext
-                {
-                    User = new ClaimsPrincipal(new ClaimsIdentity(
-                        [new Claim("client_id", Guid.NewGuid().ToString())],
-                        authenticationType: "test")),
-                },
+                HttpContext = httpContext,
             },
         };
 
@@ -114,12 +157,22 @@ public sealed class MailControllerTests
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(expectedStatus, objectResult.StatusCode);
+        Assert.Equal(tenantId.ToString("D"), stub.RequestContext!.TenantId);
+        Assert.Equal(callerId.ToString("D"), stub.RequestContext.CallerClientId);
+        Assert.Equal("correlation-123", stub.RequestContext.CorrelationId);
     }
 
     private sealed class StubSendMailUseCase(SendMailOutcome outcome) : ISendMailUseCase
     {
+        public MailRequestContext? RequestContext { get; private set; }
+
         public Task<SendMailOutcome> ExecuteAsync(
             MailNotification notification,
-            CancellationToken cancellationToken = default) => Task.FromResult(outcome);
+            CancellationToken cancellationToken = default,
+            MailRequestContext? requestContext = null)
+        {
+            RequestContext = requestContext;
+            return Task.FromResult(outcome);
+        }
     }
 }

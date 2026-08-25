@@ -191,7 +191,9 @@ Todo con mismo TraceId → Visible en Seq como trace único
    ```sql
    Host = "postino" AND MessageTemplate LIKE "%agotó los % reintentos — va a dead-letter%"
    ```
-   → Dispara alerta si count > 0; cada mensaje trae el `MessageId` para ubicarlo en la cola
+   → Dispara alerta si count > 0; cada mensaje trae `MessageId`, `TenantId`,
+   `CallerClientId`, `CorrelationId` y `NotificationType` para seguirlo entre el request,
+   RabbitMQ, journal y DLQ sin persistir el destinatario ni el cuerpo.
 
 3. **Latencia Alta**
    ```sql

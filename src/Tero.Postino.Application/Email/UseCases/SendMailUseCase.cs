@@ -30,7 +30,10 @@ public sealed class SendMailUseCase : ISendMailUseCase
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public async Task<SendMailOutcome> ExecuteAsync(MailNotification notification, CancellationToken cancellationToken = default)
+    public async Task<SendMailOutcome> ExecuteAsync(
+        MailNotification notification,
+        CancellationToken cancellationToken = default,
+        MailRequestContext? requestContext = null)
     {
         var errors = Validate(notification);
         if (errors.Count > 0)
@@ -46,6 +49,12 @@ public sealed class SendMailUseCase : ISendMailUseCase
         }
 
         var messageId = Guid.NewGuid().ToString("N");
+        var auditContext = requestContext ?? new MailRequestContext
+        {
+            CallerClientId = "postino-internal",
+            CorrelationId = messageId,
+            OccurredAtUtc = DateTimeOffset.UtcNow,
+        };
 
         var mailMessage = new MailMessageDto
         {
@@ -54,6 +63,10 @@ public sealed class SendMailUseCase : ISendMailUseCase
             TemplateType = notification.NotificationType.ToString(),
             Language = notification.LanguageCode,
             TemplateModel = BuildTemplateModel(notification),
+            TenantId = auditContext.TenantId,
+            CallerClientId = auditContext.CallerClientId,
+            CorrelationId = auditContext.CorrelationId,
+            OccurredAtUtc = auditContext.OccurredAtUtc,
         };
 
         try
@@ -79,9 +92,12 @@ public sealed class SendMailUseCase : ISendMailUseCase
         {
             _logger.LogError(
                 ex,
-                "No se pudo encolar el mail {MessageId} de tipo {NotificationType}.",
+                "No se pudo encolar el mail {MessageId} de tipo {NotificationType} para el tenant {TenantId}, caller {CallerClientId}, correlación {CorrelationId}.",
                 messageId,
-                notification.NotificationType);
+                notification.NotificationType,
+                auditContext.TenantId,
+                auditContext.CallerClientId,
+                auditContext.CorrelationId);
 
             return new SendMailOutcome
             {

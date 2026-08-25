@@ -54,4 +54,16 @@ public sealed record MailMessageDto
     /// lo usa para elegir la carpeta de plantillas.
     /// </summary>
     public string? Language { get; init; }
+
+    /// <summary>Tenant que originó el pedido. Puede ser nulo para procesos internos globales.</summary>
+    public string? TenantId { get; init; }
+
+    /// <summary>Cliente de servicio o worker interno que originó el pedido.</summary>
+    public required string CallerClientId { get; init; }
+
+    /// <summary>Identificador para seguir la operación entre HTTP, RabbitMQ, journal y DLQ.</summary>
+    public required string CorrelationId { get; init; }
+
+    /// <summary>Instante en que Postino recibió o generó el pedido.</summary>
+    public DateTimeOffset OccurredAtUtc { get; init; }
 }
