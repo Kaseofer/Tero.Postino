@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Tero.Postino.Infrastructure.Email;
+using Tero.Postino.Application.Email.Ports;
 
 namespace Tero.Postino.Api.Tests.Email;
 
@@ -33,6 +34,34 @@ public sealed class MailJournalWriterTests : IDisposable
         Assert.DoesNotContain(recipient, content, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(MailJournalWriter.HashRecipient(recipient), content);
         Assert.Contains("Estado: sent", content);
+    }
+
+    [Fact]
+    public async Task WriteAsync_WithAuditContext_PersistsSanitizedTraceabilityMetadata()
+    {
+        var writer = CreateWriter();
+        var context = new MailRequestContext
+        {
+            TenantId = Guid.NewGuid().ToString("D"),
+            CallerClientId = Guid.NewGuid().ToString("D"),
+            CorrelationId = "correlation-123",
+            OccurredAtUtc = DateTimeOffset.UtcNow.AddMinutes(-1),
+        };
+
+        await writer.WriteAsync(
+            Guid.NewGuid().ToString(),
+            "PasswordReset",
+            "es",
+            "patient@example.com",
+            pending: false,
+            requestContext: context);
+
+        var path = Assert.Single(Directory.GetFiles(_basePath, "*.txt", SearchOption.AllDirectories));
+        var content = await File.ReadAllTextAsync(path);
+        Assert.Contains($"TenantId: {context.TenantId}", content);
+        Assert.Contains($"CallerClientId: {context.CallerClientId}", content);
+        Assert.Contains($"CorrelationId: {context.CorrelationId}", content);
+        Assert.Contains($"OccurredAtUtc: {context.OccurredAtUtc:O}", content);
     }
 
     [Fact]

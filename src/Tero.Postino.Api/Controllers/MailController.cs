@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Tero.Contracts.Mail.Requests;
+using Tero.Contracts.Claims;
 using Tero.Postino.Application.Email;
 using Tero.Postino.Application.Email.Ports;
+using Tero.ServiceDefaults.CorrelationId;
 
 namespace Tero.Postino.Controllers;
 
@@ -24,13 +26,13 @@ namespace Tero.Postino.Controllers;
 public sealed class MailController : ControllerBase
 {
     private readonly ISendMailUseCase _sendMailUseCase;
+    private readonly CorrelationIdContext _correlationIdContext;
 
-    public MailController(ISendMailUseCase sendMailUseCase)
+    public MailController(ISendMailUseCase sendMailUseCase, CorrelationIdContext correlationIdContext)
     {
         _sendMailUseCase = sendMailUseCase ?? throw new ArgumentNullException(nameof(sendMailUseCase));
+        _correlationIdContext = correlationIdContext ?? throw new ArgumentNullException(nameof(correlationIdContext));
     }
-
-    private bool IsServiceToken() => !string.IsNullOrEmpty(User.FindFirst("client_id")?.Value);
 
     /// <summary>
     /// Encola un mail a partir de un <see cref="MailNotification"/> tipado — quien lo manda no
@@ -45,12 +47,12 @@ public sealed class MailController : ControllerBase
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Send([FromBody] MailNotification notification, CancellationToken cancellationToken)
     {
-        if (!IsServiceToken())
+        if (!TryCreateRequestContext(out var requestContext))
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Este endpoint sólo admite tokens de servicio." });
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Este endpoint requiere identidad de servicio y tenant válidos." });
         }
 
-        var outcome = await _sendMailUseCase.ExecuteAsync(notification, cancellationToken).ConfigureAwait(false);
+        var outcome = await _sendMailUseCase.ExecuteAsync(notification, cancellationToken, requestContext).ConfigureAwait(false);
 
         if (!outcome.IsSuccess)
         {
@@ -74,4 +76,30 @@ public sealed class MailController : ControllerBase
 
         return Accepted(response);
     }
+
+    private bool TryCreateRequestContext(out MailRequestContext requestContext)
+    {
+        var callerClaim = User.FindFirst(TeroClaimNames.ClientId)?.Value;
+        var tenantClaim = User.FindFirst(TeroClaimNames.TenantId)?.Value;
+        if (!Guid.TryParse(callerClaim, out var callerId) || !Guid.TryParse(tenantClaim, out var tenantId))
+        {
+            requestContext = null!;
+            return false;
+        }
+
+        requestContext = new MailRequestContext
+        {
+            TenantId = tenantId.ToString("D"),
+            CallerClientId = callerId.ToString("D"),
+            CorrelationId = NormalizeCorrelationId(_correlationIdContext.GetOrGenerateCorrelationId()),
+            OccurredAtUtc = DateTimeOffset.UtcNow,
+        };
+        return true;
+    }
+
+    private static string NormalizeCorrelationId(string value) =>
+        value.Length is > 0 and <= 64
+        && value.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-')
+            ? value
+            : Guid.NewGuid().ToString("N");
 }
