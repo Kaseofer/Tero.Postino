@@ -10,7 +10,7 @@ namespace Tero.Postino.Api.Tests.Email;
 public sealed class NotificationContentTests
 {
     [Fact]
-    public async Task ExecuteAsync_Cancelacion_ConservaElMotivoEnElModelo()
+    public async Task ExecuteAsync_Cancellation_PreservesReasonInTemplateModel()
     {
         var publisher = new CapturingPublisher();
         var useCase = CreateUseCase(publisher);
@@ -32,7 +32,7 @@ public sealed class NotificationContentTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_Reprogramacion_ConservaElHorarioAnteriorEnElModelo()
+    public async Task ExecuteAsync_Reschedule_PreservesPreviousTimeInTemplateModel()
     {
         var publisher = new CapturingPublisher();
         var useCase = CreateUseCase(publisher);
@@ -58,7 +58,7 @@ public sealed class NotificationContentTests
     [InlineData("es", "Motivo de la cancelación")]
     [InlineData("en", "Reason for cancellation")]
     [InlineData("pt", "Motivo do cancelamento")]
-    public void Render_Cancelacion_MuestraElMotivoEnCadaIdioma(string language, string label)
+    public void Render_Cancellation_ShowsReasonInEveryLanguage(string language, string label)
     {
         var renderer = CreateRenderer();
         var model = JsonModel(new Dictionary<string, object>
@@ -80,7 +80,7 @@ public sealed class NotificationContentTests
     [InlineData("es", "Horario anterior")]
     [InlineData("en", "Previous date and time")]
     [InlineData("pt", "Data e horário anteriores")]
-    public void Render_Reprogramacion_MuestraHorarioAnteriorEnCadaIdioma(string language, string label)
+    public void Render_Reschedule_ShowsPreviousTimeInEveryLanguage(string language, string label)
     {
         var renderer = CreateRenderer();
         var model = JsonModel(new Dictionary<string, object>
@@ -102,7 +102,7 @@ public sealed class NotificationContentTests
     [InlineData("@")]
     [InlineData("persona@")]
     [InlineData("@dominio.com")]
-    public async Task ExecuteAsync_EmailInvalido_NoPublica(string email)
+    public async Task ExecuteAsync_InvalidEmail_DoesNotPublish(string email)
     {
         var publisher = new CapturingPublisher();
         var useCase = CreateUseCase(publisher);
@@ -117,7 +117,7 @@ public sealed class NotificationContentTests
     [Theory]
     [InlineData("/reset")]
     [InlineData("ftp://app.tero.test/reset")]
-    public async Task ExecuteAsync_UrlDeAccionInvalida_NoPublica(string actionUrl)
+    public async Task ExecuteAsync_InvalidActionUrl_DoesNotPublish(string actionUrl)
     {
         var publisher = new CapturingPublisher();
         var useCase = CreateUseCase(publisher);
@@ -130,7 +130,7 @@ public sealed class NotificationContentTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_TokenVacio_NoPublica()
+    public async Task ExecuteAsync_EmptyToken_DoesNotPublish()
     {
         var publisher = new CapturingPublisher();
         var useCase = CreateUseCase(publisher);
@@ -143,7 +143,7 @@ public sealed class NotificationContentTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_UrlConQueryYFragment_UbicaElTokenAntesDelFragmento()
+    public async Task ExecuteAsync_UrlWithQueryAndFragment_PlacesTokenBeforeFragment()
     {
         var publisher = new CapturingPublisher();
         var useCase = CreateUseCase(publisher);
@@ -159,7 +159,7 @@ public sealed class NotificationContentTests
     }
 
     [Fact]
-    public async Task PlantillasVisuales_ConModeloGeneradoPorPostino_NoDejanPlaceholders()
+    public async Task VisualTemplates_WithPostinoGeneratedModel_LeaveNoPlaceholders()
     {
         var renderer = CreateRenderer();
 
