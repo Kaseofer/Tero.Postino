@@ -1,1 +1,1 @@
-Cancelamento de consulta: {{serviceName}}
+Agendamento cancelado: {{serviceName}}

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using System.Net.Mail;
 using Tero.Contracts.Mail.Requests;
 using Tero.Postino.Application.Email.Ports;
 
@@ -96,12 +97,13 @@ public sealed class SendMailUseCase : ISendMailUseCase
     }
 
     /// <summary>
-    /// Las 4 variedades de turno (booked/cancelled/rescheduled/reminder) arman el modelo
-    /// exactamente igual, así que un único <c>case</c> las cubre a las cuatro matcheando
-    /// contra la clase base, en vez de repetir la construcción cuatro veces.
+    /// Las 4 variedades de turno comparten un modelo base. Cancelación y reprogramación lo
+    /// enriquecen con sus datos propios para que el contrato no pierda información antes de
+    /// llegar a la plantilla (PO3-DAT-1).
     /// </summary>
-    private static Dictionary<string, object> BuildTemplateModel(MailNotification notification) =>
-        notification switch
+    private static Dictionary<string, object> BuildTemplateModel(MailNotification notification)
+    {
+        var model = notification switch
         {
             AppointmentNotification n => AppointmentModel(n),
 
@@ -134,16 +136,30 @@ public sealed class SendMailUseCase : ISendMailUseCase
             _ => throw new NotSupportedException($"Tipo de notificación no soportado: {notification.GetType().Name}"),
         };
 
+        // Las plantillas visuales comparten datos de marca. Algunos contratos anteriores a
+        // 0.9.2 todavía no los transportan; se agregan valores seguros para que el correo no
+        // exponga placeholders sin resolver mientras esos productores migran.
+        model.TryAdd("organizationName", notification is AdminCredentialsNotification admin
+            ? admin.TenantName
+            : "Tero");
+        model.TryAdd("organizationPhone", string.Empty);
+        model.TryAdd("organizationWhatsapp", string.Empty);
+        model.TryAdd("organizationEmail", string.Empty);
+
+        return model;
+    }
+
     /// <summary>
-    /// Concatenar a mano (<c>$"{url}?token={token}"</c>) rompía si <paramref name="baseUrl"/>
-    /// ya traía query string (<c>?lang=en</c> → <c>?lang=en?token=...</c>, URL inválida) y
-    /// nunca encodeaba el token — uno con <c>+</c>/<c>=</c> (típico en base64) podía llegar
-    /// truncado del otro lado. BACKLOG.md #5.
+    /// <see cref="UriBuilder"/> mantiene el query antes del fragmento. La concatenación
+    /// anterior producía <c>#paso?token=...</c> y el servidor nunca recibía el token.
     /// </summary>
     private static string BuildActionUrl(string baseUrl, string token)
     {
-        var separator = baseUrl.Contains('?') ? "&" : "?";
-        return $"{baseUrl}{separator}token={Uri.EscapeDataString(token)}";
+        var builder = new UriBuilder(baseUrl);
+        var query = builder.Query.TrimStart('?');
+        var tokenParameter = $"token={Uri.EscapeDataString(token)}";
+        builder.Query = string.IsNullOrEmpty(query) ? tokenParameter : $"{query}&{tokenParameter}";
+        return builder.Uri.AbsoluteUri;
     }
 
     private static Dictionary<string, object> AppointmentModel(AppointmentNotification n)
@@ -153,6 +169,12 @@ public sealed class SendMailUseCase : ISendMailUseCase
             { "contactName", n.RecipientName },
             { "serviceName", n.ServiceName },
             { "appointmentDateTime", n.AppointmentDateTime },
+            { "organizationName", ValueOrDefault(n.OrganizationName, "Tero") },
+            { "organizationPhone", ValueOrDefault(n.OrganizationPhone) },
+            { "organizationWhatsapp", ValueOrDefault(n.OrganizationWhatsApp) },
+            // Las plantillas muestran siempre el profesional; los eventos antiguos no lo
+            // incluían, por eso el servicio es el fallback más informativo disponible.
+            { "professionalName", ValueOrDefault(n.ProfessionalName, n.ServiceName) },
         };
 
         if (!string.IsNullOrWhiteSpace(n.Location))
@@ -167,16 +189,56 @@ public sealed class SendMailUseCase : ISendMailUseCase
             model["durationMinutes"] = n.DurationMinutes.Value;
         }
 
+        AddWhenPresent(model, "specialty", n.Specialty);
+        AddWhenPresent(model, "appointmentUrl", n.AppointmentUrl);
+
+        if (n is AppointmentCancelledNotification cancelled
+            && !string.IsNullOrWhiteSpace(cancelled.CancellationReason))
+        {
+            model["cancellationReason"] = cancelled.CancellationReason;
+        }
+
+        if (n is AppointmentRescheduledNotification rescheduled)
+        {
+            model["previousAppointmentDateTime"] = rescheduled.PreviousAppointmentDateTime;
+        }
+
         return model;
     }
+
+    private static void AddWhenPresent(Dictionary<string, object> model, string key, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            model[key] = value;
+        }
+    }
+
+    private static string ValueOrDefault(string? value, string fallback = "") =>
+        string.IsNullOrWhiteSpace(value) ? fallback : value;
 
     private static List<string> Validate(MailNotification notification)
     {
         var errors = new List<string>();
 
-        if (!notification.RecipientEmail.Contains('@'))
+        if (!MailAddress.TryCreate(notification.RecipientEmail, out _))
         {
             errors.Add("El formato del correo no es válido");
+        }
+
+        if (notification is AccountNotification account)
+        {
+            if (string.IsNullOrWhiteSpace(account.Token))
+            {
+                errors.Add("El token de acción es obligatorio");
+            }
+
+            if (!Uri.TryCreate(account.ActionUrl, UriKind.Absolute, out var actionUri)
+                || (!string.Equals(actionUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(actionUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)))
+            {
+                errors.Add("La URL de acción debe ser una URL HTTP o HTTPS absoluta");
+            }
         }
 
         // Sólo la cancelación puede avisar de una cita que ya pasó — el resto de las variedades
