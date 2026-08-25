@@ -45,7 +45,12 @@ public sealed class AppointmentsReminderClient : AuthenticatedHttpClientBase, IA
                 w.ClientEmail,
                 w.ClientWhatsAppPhone,
                 w.ClientNotifyByEmail,
-                w.ClientNotifyByWhatsApp))
+                w.ClientNotifyByWhatsApp,
+                w.DurationMinutes is > 0 ? w.DurationMinutes : null,
+                w.ServiceName,
+                w.Location,
+                w.LanguageCode ?? string.Empty,
+                string.IsNullOrWhiteSpace(w.TimeZoneId) ? "UTC" : w.TimeZoneId))
             .ToList();
     }
 
@@ -94,5 +99,10 @@ public sealed class AppointmentsReminderClient : AuthenticatedHttpClientBase, IA
         string? ClientEmail,
         string? ClientWhatsAppPhone,
         bool ClientNotifyByEmail,
-        bool ClientNotifyByWhatsApp);
+        bool ClientNotifyByWhatsApp,
+        int? DurationMinutes,
+        string? ServiceName,
+        string? Location,
+        string? LanguageCode,
+        string? TimeZoneId);
 }

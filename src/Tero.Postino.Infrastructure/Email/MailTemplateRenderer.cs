@@ -189,8 +189,8 @@ public sealed class MailTemplateRenderer
 
     /// <summary>
     /// Resuelve <c>Templates/{idioma}/{templateType}.{extension}</c>. Si el idioma pedido no
-    /// tiene ese archivo (carpeta inexistente, formato inválido, o simplemente no se tradujo
-    /// todavía), cae al idioma default en vez de irse directo al genérico — BACKLOG.md #2.
+    /// tiene ese archivo, intenta primero la variante neutral (<c>pt-BR → pt</c>) y después
+    /// el idioma default (<c>es</c>) en vez de irse directo al genérico — BACKLOG.md #2.
     /// <c>null</c> sólo si ni el pedido ni el default tienen el archivo.
     /// </summary>
     private string? ResolveTemplatePath(string? templateType, string? languageCode, string extension)
@@ -205,6 +205,24 @@ public sealed class MailTemplateRenderer
         if (File.Exists(requestedPath))
         {
             return requestedPath;
+        }
+
+        var neutralLanguage = requestedLanguage.Contains('-')
+            ? requestedLanguage.Split('-', 2)[0]
+            : null;
+        if (neutralLanguage is not null)
+        {
+            var neutralPath = Path.Combine(_templatesDirectory, neutralLanguage, $"{templateType}.{extension}");
+            if (File.Exists(neutralPath))
+            {
+                _logger.LogInformation(
+                    "No hay '{TemplateType}.{Extension}' en idioma '{Language}' — usa la variante neutral '{Neutral}'.",
+                    templateType,
+                    extension,
+                    requestedLanguage,
+                    neutralLanguage);
+                return neutralPath;
+            }
         }
 
         if (string.Equals(requestedLanguage, DefaultLanguageCode, StringComparison.Ordinal))
@@ -230,13 +248,18 @@ public sealed class MailTemplateRenderer
             return DefaultLanguageCode;
         }
 
-        if (!LanguageCodePattern.IsMatch(languageCode))
+        var parts = languageCode.Trim().Split('-', 2);
+        var normalized = parts.Length == 1
+            ? parts[0].ToLowerInvariant()
+            : $"{parts[0].ToLowerInvariant()}-{parts[1].ToUpperInvariant()}";
+
+        if (!LanguageCodePattern.IsMatch(normalized))
         {
             _logger.LogWarning("LanguageCode '{LanguageCode}' con formato inválido — se usa '{Default}'.", languageCode, DefaultLanguageCode);
             return DefaultLanguageCode;
         }
 
-        return languageCode;
+        return normalized;
     }
 
     private static string RenderTemplate(string template, Dictionary<string, JsonElement> model)

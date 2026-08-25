@@ -77,6 +77,42 @@ public sealed class NotificationContentTests
         Assert.Equal(occurredAt, publisher.Message.OccurredAtUtc);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_ReminderWithTimeZone_FormatsLocalDateForLanguage()
+    {
+        var publisher = new CapturingPublisher();
+        var notification = new AppointmentReminderNotification
+        {
+            RecipientEmail = "persona@example.com",
+            RecipientName = "Ana",
+            AppointmentDateTime = new DateTime(2026, 8, 26, 18, 0, 0, DateTimeKind.Utc),
+            ServiceName = "Consulta",
+            LanguageCode = "pt-BR",
+        };
+        var context = new MailRequestContext
+        {
+            CallerClientId = "postino-reminder-worker",
+            CorrelationId = "reminder-test",
+            RecipientTimeZoneId = "America/Argentina/Buenos_Aires",
+        };
+
+        var outcome = await CreateUseCase(publisher).ExecuteAsync(notification, requestContext: context);
+
+        Assert.True(outcome.IsSuccess);
+        Assert.Equal("26/08/2026 15:00", publisher.Message!.TemplateModel!["appointmentDateTime"]);
+    }
+
+    [Fact]
+    public void RenderSubject_RegionalLanguageFallsBackToNeutralBeforeSpanish()
+    {
+        var renderer = CreateRenderer();
+        var model = JsonModel(new Dictionary<string, object> { ["serviceName"] = "Consulta" });
+
+        var subject = renderer.RenderSubject("AppointmentReminder", "pt-br", model);
+
+        Assert.Equal("Lembrete de agendamento: Consulta", subject);
+    }
+
     [Theory]
     [InlineData("es", "Motivo de la cancelación")]
     [InlineData("en", "Reason for cancellation")]

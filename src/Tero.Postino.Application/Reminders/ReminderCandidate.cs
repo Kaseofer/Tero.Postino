@@ -13,4 +13,9 @@ public sealed record ReminderCandidate(
     string? ClientEmail,
     string? ClientWhatsAppPhone,
     bool ClientNotifyByEmail,
-    bool ClientNotifyByWhatsApp);
+    bool ClientNotifyByWhatsApp,
+    int? DurationMinutes,
+    string? ServiceName,
+    string? Location,
+    string LanguageCode,
+    string TimeZoneId);

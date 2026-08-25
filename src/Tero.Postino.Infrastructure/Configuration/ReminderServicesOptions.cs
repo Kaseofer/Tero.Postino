@@ -17,6 +17,8 @@ public sealed class WhatsAppGatewayOptions
     /// manda plantilla, nunca texto libre fuera de la ventana de 24h de conversación.</summary>
     public string TemplateName { get; set; } = "appointment_reminder";
 
+    /// <summary>Fallback para respuestas antiguas de Appointments sin idioma. Los candidatos
+    /// actuales transportan el idioma de su organización por mensaje.</summary>
     public string LanguageCode { get; set; } = "es";
 }
 
