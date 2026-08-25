@@ -1,5 +1,7 @@
 # Tero.Postino
 
+> **[Documentación completa →](doc/)** · [Arquitectura](doc/ARQUITECTURA.md) · [Contratos](doc/CONTRATOS.md) · [Backlog](doc/BACKLOG.md)
+
 El servicio de correo de Tero. **Es el único que habla con la cola de mails**: los demás
 servicios le piden un envío por HTTP y se olvidan.
 
