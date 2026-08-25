@@ -113,6 +113,38 @@ public sealed class NotificationContentTests
         Assert.Equal("Lembrete de agendamento: Consulta", subject);
     }
 
+    [Fact]
+    public void Render_UnknownTemplateType_DoesNotReadOutsideTemplatesDirectory()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"tero-postino-tests-{Guid.NewGuid():N}");
+        var templatesDirectory = Path.Combine(root, "Templates");
+        var secret = "contenido-que-no-debe-leerse";
+
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(templatesDirectory, "es"));
+            File.WriteAllText(Path.Combine(root, "secret.html"), secret);
+            var renderer = new MailTemplateRenderer(
+                NullLogger<MailTemplateRenderer>.Instance,
+                templatesDirectory);
+
+            var html = renderer.Render("../../secret", "es", JsonModel(new Dictionary<string, object>
+            {
+                ["contactName"] = "Ana",
+            }));
+
+            Assert.DoesNotContain(secret, html);
+            Assert.Contains("Ana", html);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
     [Theory]
     [InlineData("es", "Motivo de la cancelación")]
     [InlineData("en", "Reason for cancellation")]
