@@ -19,8 +19,8 @@ namespace Tero.Postino.Infrastructure.RabbitMq;
 /// <c>Tero.WhatsApp.Gateway.InboundWebhookConsumer</c>. Un error de render o SMTP ya no se
 /// pierde al primer intento (BACKLOG.md #7): se reintenta con backoff creciente vía
 /// republish (header <c>x-retry-count</c>) hasta <see cref="MaxRetries"/> veces, y recién ahí
-/// va a <c>postino.mail.dead</c> con el motivo y el payload original completo, para
-/// reprocesar a mano — ver el query de Seq documentado en OBSERVABILITY.md.
+/// va a <c>postino.mail.dead</c> con metadatos seguros para diagnóstico. La DLQ no duplica
+/// destinatarios, cuerpos ni modelos de plantilla que pueden contener credenciales.
 /// </summary>
 public sealed class MailQueueConsumer : BackgroundService
 {
@@ -101,35 +101,38 @@ public sealed class MailQueueConsumer : BackgroundService
             return;
         }
 
-        // Declarados afuera del try: si se agotan los reintentos y el mensaje va a
-        // dead-letter, la bitácora de pendientes necesita el asunto/cuerpo ya resueltos —
-        // volver a renderizar la plantilla en el catch duplicaría el trabajo (y podría volver
-        // a fallar por la misma razón).
-        string? subject = null;
-        string? htmlBody = null;
-        string? plainTextBody = null;
+        var safeMessageId = MailJournalWriter.NormalizeMessageId(message.MessageId);
 
         try
         {
-            htmlBody = !string.IsNullOrEmpty(message.HtmlBody)
+            var htmlBody = !string.IsNullOrEmpty(message.HtmlBody)
                 ? message.HtmlBody
                 : _templateRenderer.Render(message.TemplateType, message.Language, message.TemplateModel);
 
             // El asunto viene del archivo .subject.txt del tipo+idioma (BACKLOG.md #1) — antes
             // SendMailUseCase lo mandaba fijo en español dentro del DTO. Un Subject explícito
             // en el mensaje (mails sin plantilla, con HtmlBody propio) sigue teniendo prioridad.
-            subject = !string.IsNullOrEmpty(message.Subject)
+            var subject = !string.IsNullOrEmpty(message.Subject)
                 ? message.Subject
                 : _templateRenderer.RenderSubject(message.TemplateType, message.Language, message.TemplateModel)
                     ?? "(sin asunto)";
 
             // Respeta un PlainTextBody explícito; si no vino, se deriva del HTML ya armado
             // (BACKLOG.md #8) — antes el campo existía en el contrato pero nadie lo llenaba.
-            plainTextBody = !string.IsNullOrEmpty(message.PlainTextBody)
+            var plainTextBody = !string.IsNullOrEmpty(message.PlainTextBody)
                 ? message.PlainTextBody
                 : MailTemplateRenderer.HtmlToPlainText(htmlBody);
 
-            await _mailSender.SendAsync(message.To, subject, htmlBody, plainTextBody, stoppingToken).ConfigureAwait(false);
+            await _mailSender.SendAsync(
+                    safeMessageId,
+                    message.TemplateType,
+                    message.Language,
+                    message.To,
+                    subject,
+                    htmlBody,
+                    plainTextBody,
+                    stoppingToken)
+                .ConfigureAwait(false);
             await channel.BasicAckAsync(args.DeliveryTag, false, stoppingToken).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -144,7 +147,7 @@ public sealed class MailQueueConsumer : BackgroundService
                 _logger.LogWarning(
                     ex,
                     "Falló el envío del mensaje {MessageId} (intento {Attempt}/{MaxRetries}) — reintenta en {Backoff}.",
-                    message.MessageId, nextAttempt, MaxRetries, backoff);
+                    safeMessageId, nextAttempt, MaxRetries, backoff);
 
                 await Task.Delay(backoff, stoppingToken).ConfigureAwait(false);
                 await RepublishAsync(channel, ExchangeName, RoutingKey, args.Body, nextAttempt, headers: null, stoppingToken)
@@ -158,22 +161,35 @@ public sealed class MailQueueConsumer : BackgroundService
                 _logger.LogError(
                     ex,
                     "Mensaje {MessageId} agotó los {MaxRetries} reintentos — va a dead-letter ({DeadQueue}).",
-                    message.MessageId, MaxRetries, DeadQueueName);
+                    safeMessageId, MaxRetries, DeadQueueName);
 
-                // Bitácora de pendientes: sólo si llegamos a tener asunto/cuerpo resueltos —
-                // si el fallo fue en el render de la plantilla, no hay nada legible para dejar.
-                if (subject is not null && htmlBody is not null)
-                {
-                    await _journal.WriteAsync(message.To, subject, htmlBody, plainTextBody, pending: true, pendingReason: ex.Message)
-                        .ConfigureAwait(false);
-                }
+                var failureCode = ex.GetType().Name;
+                await _journal.WriteAsync(
+                        safeMessageId,
+                        message.TemplateType,
+                        message.Language,
+                        message.To,
+                        pending: true,
+                        failureCode: failureCode)
+                    .ConfigureAwait(false);
 
                 var deadHeaders = new Dictionary<string, object?>
                 {
-                    ["x-dead-letter-reason"] = ex.Message,
+                    ["x-dead-letter-reason"] = failureCode,
                     ["x-original-routing-key"] = RoutingKey,
                 };
-                await RepublishAsync(channel, ExchangeName, DeadRoutingKey, args.Body, retryCount, deadHeaders, stoppingToken)
+                var deadLetterBody = JsonSerializer.SerializeToUtf8Bytes(
+                    new DeadLetterMetadata
+                    {
+                        MessageId = safeMessageId,
+                        TemplateType = MailJournalWriter.NormalizeIdentifier(message.TemplateType),
+                        Language = MailJournalWriter.NormalizeIdentifier(message.Language),
+                        RecipientHash = MailJournalWriter.HashRecipient(message.To),
+                        FailureCode = failureCode,
+                        FailedAtUtc = DateTime.UtcNow,
+                    },
+                    SerializerOptions);
+                await RepublishAsync(channel, ExchangeName, DeadRoutingKey, deadLetterBody, retryCount, deadHeaders, stoppingToken)
                     .ConfigureAwait(false);
             }
 
@@ -236,5 +252,15 @@ public sealed class MailQueueConsumer : BackgroundService
         public string? TemplateType { get; set; }
         public string? Language { get; set; }
         public Dictionary<string, JsonElement>? TemplateModel { get; set; }
+    }
+
+    private sealed class DeadLetterMetadata
+    {
+        public string? MessageId { get; set; }
+        public string? TemplateType { get; set; }
+        public string? Language { get; set; }
+        public string RecipientHash { get; set; } = "";
+        public string FailureCode { get; set; } = "";
+        public DateTime FailedAtUtc { get; set; }
     }
 }

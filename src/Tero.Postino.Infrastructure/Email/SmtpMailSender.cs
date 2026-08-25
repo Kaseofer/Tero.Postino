@@ -31,21 +31,27 @@ public sealed class SmtpMailSender
     /// como parte alternativa <c>text/plain</c> junto al HTML (multipart/alternative), en vez
     /// de mandar sólo HTML como antes. Sin ella, el comportamiento es el de siempre.
     ///
-    /// TODO mail que pasa por acá queda en la bitácora de <see cref="MailJournalWriter"/>,
-    /// se haya podido mandar de verdad o no — pedido explícito para poder revisar/reenviar a
-    /// mano mientras no haya un proveedor SMTP real configurado.
+    /// Todo mail procesado deja sólo metadatos seguros en <see cref="MailJournalWriter"/>.
     /// </summary>
-    public async Task SendAsync(string to, string subject, string htmlBody, string? plainTextBody = null, CancellationToken cancellationToken = default)
+    public async Task SendAsync(
+        string? messageId,
+        string? templateType,
+        string? language,
+        string to,
+        string subject,
+        string htmlBody,
+        string? plainTextBody = null,
+        CancellationToken cancellationToken = default)
     {
         var smtp = _options.Value;
 
         if (string.IsNullOrEmpty(smtp.Host) || string.IsNullOrEmpty(smtp.FromAddress))
         {
             _logger.LogWarning(
-                "Smtp:Host o Smtp:FromAddress sin configurar — se loguea en vez de mandar. Destinatario: {To}, asunto: {Subject}",
-                to,
-                subject);
-            await _journal.WriteAsync(to, subject, htmlBody, plainTextBody, pending: true, pendingReason: "Smtp:Host/Smtp:FromAddress sin configurar")
+                "Smtp:Host o Smtp:FromAddress sin configurar — no se envía el mensaje {MessageId} a {RecipientHash}.",
+                messageId,
+                MailJournalWriter.HashRecipient(to));
+            await _journal.WriteAsync(messageId, templateType, language, to, pending: true, failureCode: "smtp_not_configured")
                 .ConfigureAwait(false);
             return;
         }
@@ -78,7 +84,10 @@ public sealed class SmtpMailSender
         }
 
         await client.SendMailAsync(message, cancellationToken).ConfigureAwait(false);
-        _logger.LogInformation("Mail enviado a {To}: {Subject}", to, subject);
-        await _journal.WriteAsync(to, subject, htmlBody, plainTextBody, pending: false).ConfigureAwait(false);
+        _logger.LogInformation(
+            "Mail {MessageId} enviado a {RecipientHash}.",
+            messageId,
+            MailJournalWriter.HashRecipient(to));
+        await _journal.WriteAsync(messageId, templateType, language, to, pending: false).ConfigureAwait(false);
     }
 }
