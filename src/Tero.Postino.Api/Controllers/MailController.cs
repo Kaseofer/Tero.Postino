@@ -6,7 +6,7 @@ using Tero.Postino.Application.Email;
 using Tero.Postino.Application.Email.Ports;
 using Tero.ServiceDefaults.CorrelationId;
 
-namespace Tero.Postino.Controllers;
+namespace Tero.Postino.Api.Controllers;
 
 /// <summary>
 /// Reemplaza a <c>EmailController</c> (3 endpoints, uno por tipo de notificación) por un

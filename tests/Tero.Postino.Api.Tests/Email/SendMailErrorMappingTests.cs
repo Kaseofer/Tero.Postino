@@ -6,7 +6,7 @@ using Tero.Contracts.Mail.Requests;
 using Tero.Postino.Application.Email;
 using Tero.Postino.Application.Email.Ports;
 using Tero.Postino.Application.Email.UseCases;
-using Tero.Postino.Controllers;
+using Tero.Postino.Api.Controllers;
 using Tero.ServiceDefaults.CorrelationId;
 
 namespace Tero.Postino.Api.Tests.Email;

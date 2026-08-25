@@ -14,7 +14,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Domain llega transitivamente vía Application. -->
     <ProjectReference Include="..\Tero.Postino.Application\Tero.Postino.Application.csproj" />
   </ItemGroup>
 
